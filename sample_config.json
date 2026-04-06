@@ -1,0 +1,10 @@
+{
+  "sftp_host": "sap-server.company.com",
+  "sftp_port": 22,
+  "sftp_username": "sap_user",
+  "sftp_password": "secure_password",
+  "sftp_remote_path": "/incoming/journal_entries/",
+  "input_path": "/data/input/",
+  "mapping_config_path": "./mapping_config.json",
+  "output_filename": "journal_entries.csv"
+}

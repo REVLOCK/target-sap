@@ -1,0 +1,37 @@
+{
+  "field_mappings": {
+    "CompanyCode": {
+      "source": "static",
+      "value": "1000"
+    },
+    "AccountCode": {
+      "source": "column",
+      "column": "Account Number"
+    },
+    "PostingDate": {
+      "source": "column",
+      "column": "Transaction Date",
+      "format": "%Y%m%d"
+    },
+    "DocumentType": {
+      "source": "static",
+      "value": "SA"
+    },
+    "Amount": {
+      "source": "column",
+      "column": "Amount"
+    },
+    "DebitCredit": {
+      "source": "transform",
+      "column": "Posting Type",
+      "mapping": {
+        "DEBIT": "H",
+        "CREDIT": "S"
+      }
+    },
+    "Description": {
+      "source": "column",
+      "column": "Description"
+    }
+  }
+}
