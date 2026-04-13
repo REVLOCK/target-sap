@@ -31,13 +31,16 @@ def load_mapping_config(config_path):
     return mapping['field_mappings']
 
 
-def apply_field_mapping(df, field_mappings):
+def apply_field_mapping(df, field_mappings, config):
     """Apply field mappings to transform input DataFrame into SAP CSV format.
 
     Supported mapping sources:
-      - "column":    copies a column value directly, with optional date format
-      - "static":    fills every row with a fixed value
-      - "transform": maps source values through a lookup dictionary
+      - "column":      copies a column value directly, with optional date format
+      - "static":      fills every row with a fixed value
+      - "config":      fills every row with a value read from the runtime config
+      - "transform":   maps source values through a lookup dictionary
+      - "conditional": copies a column value only when a condition column matches
+                       a specified value; fills empty string otherwise
     """
     result = pd.DataFrame()
 
@@ -58,6 +61,15 @@ def apply_field_mapping(df, field_mappings):
         elif source == 'static':
             result[sap_field] = mapping['value']
 
+        elif source == 'config':
+            config_key = mapping['config_key']
+            if config_key not in config:
+                raise MappingConfigError(
+                    f"Config key '{config_key}' required by SAP field '{sap_field}' "
+                    f"not found in config"
+                )
+            result[sap_field] = config[config_key]
+
         elif source == 'transform':
             col_name = mapping['column']
             if col_name not in df.columns:
@@ -69,6 +81,16 @@ def apply_field_mapping(df, field_mappings):
             if unmapped.any():
                 bad_values = df.loc[unmapped, col_name].unique().tolist()
                 logger.warning(f"Unmapped values for '{sap_field}': {bad_values}")
+
+        elif source == 'conditional':
+            col_name = mapping['column']
+            cond_col = mapping['condition_column']
+            cond_val = mapping['condition_value']
+            for col in (col_name, cond_col):
+                if col not in df.columns:
+                    logger.error(f"Source column '{col}' not found for SAP field '{sap_field}'")
+                    sys.exit(1)
+            result[sap_field] = df[col_name].where(df[cond_col] == cond_val, '')
 
         else:
             raise MappingConfigError(f"Unknown mapping source '{source}' for field '{sap_field}'")
@@ -84,17 +106,20 @@ def transform_to_sap_csv(config, field_mappings):
     df = pd.read_csv(input_path)
     logger.info(f"Loaded {len(df)} rows from input CSV")
 
-    required_columns = {
-        m['column']
-        for m in field_mappings.values()
-        if m.get('source') in ('column', 'transform')
-    }
+    column_sources = ('column', 'transform', 'conditional')
+    required_columns = set()
+    for m in field_mappings.values():
+        if m.get('source') in column_sources:
+            required_columns.add(m['column'])
+        if m.get('source') == 'conditional' and 'condition_column' in m:
+            required_columns.add(m['condition_column'])
+
     missing = required_columns - set(df.columns)
     if missing:
         logger.error(f"Input CSV is missing required columns: {sorted(missing)}")
         sys.exit(1)
 
-    sap_df = apply_field_mapping(df, field_mappings)
+    sap_df = apply_field_mapping(df, field_mappings, config)
     logger.info(f"Transformed {len(sap_df)} rows into SAP CSV format")
 
     return sap_df

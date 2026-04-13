@@ -1,10 +1,14 @@
 {
-  "sftp_host": "sap-server.company.com",
-  "sftp_port": 22,
-  "sftp_username": "sap_user",
-  "sftp_password": "secure_password",
-  "sftp_remote_path": "/incoming/journal_entries/",
-  "input_path": "/data/input/",
+  "sftp_host": "localhost",
+  "sftp_port": 2222,
+  "sftp_username": "testuser",
+  "sftp_password": "testpass",
+  "sftp_remote_path": "/upload/",
+  "input_path": "./data",
   "mapping_config_path": "./mapping_config.json",
-  "output_filename": "journal_entries.csv"
+  "output_filename": "journal_entries.csv",
+  "company_code": "CZ12",
+  "document_type": "FF",
+  "account_type": "S",
+  "profit_center": "1007"
 }

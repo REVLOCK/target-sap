@@ -1,37 +1,114 @@
 {
   "field_mappings": {
-    "CompanyCode": {
-      "source": "static",
-      "value": "1000"
+    "CompanyCode_BUKRS": {
+      "source": "config",
+      "config_key": "company_code"
+    },
+    "PostingDate_BUDAT": {
+      "source": "column",
+      "column": "Transaction Date",
+      "format": "%Y%m%d"
+    },
+    "DocumentDate_BLDAT": {
+      "source": "column",
+      "column": "Transaction Date",
+      "format": "%Y%m%d"
+    },
+    "DocumentType_BLART": {
+      "source": "config",
+      "config_key": "document_type"
+    },
+    "DocumentHeaderText_BKTXT": {
+      "source": "column",
+      "column": "Posting Group Id"
+    },
+    "Reference_XBLNR": {
+      "source": "column",
+      "column": "Posting Id"
     },
     "AccountCode": {
       "source": "column",
       "column": "Account Number"
     },
-    "PostingDate": {
-      "source": "column",
-      "column": "Transaction Date",
-      "format": "%Y%m%d"
+    "AccountType_Koart": {
+      "source": "config",
+      "config_key": "account_type"
     },
-    "DocumentType": {
+    "SpecialGLInd_Umskz": {
       "source": "static",
-      "value": "SA"
+      "value": ""
     },
-    "Amount": {
+    "AmountLC_DMBTR": {
       "source": "column",
       "column": "Amount"
     },
-    "DebitCredit": {
-      "source": "transform",
-      "column": "Posting Type",
-      "mapping": {
-        "DEBIT": "H",
-        "CREDIT": "S"
-      }
-    },
-    "Description": {
+    "AmountDC_WRBTR": {
       "source": "column",
-      "column": "Description"
+      "column": "Amount"
+    },
+    "DocumentCurrency": {
+      "source": "column",
+      "column": "Currency Code"
+    },
+    "TaxCode": {
+      "source": "static",
+      "value": ""
+    },
+    "TaxAmountLC_HWSTE": {
+      "source": "conditional",
+      "column": "Amount",
+      "condition_column": "Accounting Event Type",
+      "condition_value": "Tax"
+    },
+    "TaxAmountDC_WMWST": {
+      "source": "conditional",
+      "column": "Amount",
+      "condition_column": "Accounting Event Type",
+      "condition_value": "Tax"
+    },
+    "BusinessArea": {
+      "source": "static",
+      "value": ""
+    },
+    "CostCenter": {
+      "source": "static",
+      "value": ""
+    },
+    "InternalOrder": {
+      "source": "static",
+      "value": ""
+    },
+    "ProfitCenter": {
+      "source": "config",
+      "config_key": "profit_center"
+    },
+    "ValeurDate": {
+      "source": "static",
+      "value": ""
+    },
+    "Text_SGTXT": {
+      "source": "column",
+      "column": "Account Name"
+    },
+    "Assignment_ZUONR": {
+      "source": "static",
+      "value": ""
+    },
+    "ReferenceKey1_XREF1": {
+      "source": "column",
+      "column": "Customer Id"
+    },
+    "ReferenceKey3_XREF3": {
+      "source": "column",
+      "column": "Posting Id"
+    },
+    "TradingPartner": {
+      "source": "static",
+      "value": ""
+    },
+    "Period": {
+      "source": "column",
+      "column": "Actg Period"
     }
   }
 }
