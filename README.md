@@ -89,10 +89,10 @@ Unmapped values produce `NaN` in the output and a warning in the log; extend `ma
 target-sap --config config.json
 ```
 ## Project layout
-- `src/target_sap_sftp/__init__.py` — entry point, mapping, CSV build, upload orchestration
-- `src/target_sap_sftp/client.py` — Paramiko SFTP client
-- `src/target_sap_sftp/const.py` — required config keys and defaults
-- `src/target_sap_sftp/exceptions.py` — `SftpConnectionError`, `SftpUploadError`, `MappingConfigError`
+- `src/target_sap/__init__.py` — entry point, mapping, CSV build, upload orchestration
+- `src/target_sap/client.py` — Paramiko SFTP client
+- `src/target_sap/const.py` — required config keys and defaults
+- `src/target_sap/exceptions.py` — `SftpConnectionError`, `SftpUploadError`, `MappingConfigError`
 - `mapping_config.json` — default mapping (edit for your SAP layout)
 - `sample_config.json` — sample runtime config
 ## License

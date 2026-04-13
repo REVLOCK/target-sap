@@ -5,13 +5,13 @@ from pathlib import Path
 import pandas as pd
 import singer
 
-from target_sap_sftp.client import get_client
-from target_sap_sftp.const import (
+from target_sap.client import get_client
+from target_sap.const import (
     DEFAULT_OUTPUT_FILENAME,
     DEFAULT_SFTP_PORT,
     REQUIRED_CONFIG_KEYS,
 )
-from target_sap_sftp.exceptions import MappingConfigError
+from target_sap.exceptions import MappingConfigError
 
 logger = singer.get_logger()
 

@@ -3,7 +3,7 @@ import os
 import paramiko
 import singer
 
-from target_sap_sftp.exceptions import SftpConnectionError, SftpUploadError
+from target_sap.exceptions import SftpConnectionError, SftpUploadError
 
 logger = singer.get_logger()
 
