@@ -141,7 +141,8 @@ def upload(config):
         host=config['sftp_host'],
         port=config.get('sftp_port', DEFAULT_SFTP_PORT),
         username=config['sftp_username'],
-        password=config['sftp_password'],
+        private_key_content=config['sftp_private_key'],
+        key_passphrase=config.get('sftp_key_passphrase'),
     )
 
     filename = config.get('output_filename', DEFAULT_OUTPUT_FILENAME)

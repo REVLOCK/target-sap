@@ -20,3 +20,19 @@ class SftpUploadError(SapSftpError):
 
 class MappingConfigError(SapSftpError):
     """Invalid or missing field mapping configuration."""
+
+
+class SftpKeyError(SftpConnectionError):
+    """SSH private key related error."""
+
+
+class SftpKeyNotFoundError(SftpKeyError):
+    """SSH private key file not found."""
+
+
+class SftpKeyFormatError(SftpKeyError):
+    """SSH private key format is invalid or unsupported."""
+
+
+class SftpKeyPassphraseError(SftpKeyError):
+    """SSH private key passphrase is required or incorrect."""

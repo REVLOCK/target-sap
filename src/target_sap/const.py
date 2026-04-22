@@ -1,7 +1,7 @@
 REQUIRED_CONFIG_KEYS = [
     'sftp_host',
     'sftp_username',
-    'sftp_password',
+    'sftp_private_key',
     'sftp_remote_path',
     'input_path',
 ]

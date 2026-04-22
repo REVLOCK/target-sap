@@ -3,7 +3,13 @@ import os
 import paramiko
 import singer
 
-from target_sap.exceptions import SftpConnectionError, SftpUploadError
+from target_sap.exceptions import (
+    SftpConnectionError, 
+    SftpUploadError,
+    SftpKeyNotFoundError,
+    SftpKeyFormatError,
+    SftpKeyPassphraseError,
+)
 
 logger = singer.get_logger()
 
@@ -11,24 +17,98 @@ logger = singer.get_logger()
 class SapSftpClient:
     """SFTP client for uploading CSV files to a SAP server."""
 
-    def __init__(self, host, port, username, password):
+    def __init__(self, host, port, username, private_key_content, key_passphrase=None):
         self.host = host
         self.port = port
         self.username = username
-        self.password = password
+        self.private_key_content = private_key_content
+        self.key_passphrase = key_passphrase
         self._transport = None
         self._sftp = None
 
     def connect(self):
         try:
+            # Load private key
+            private_key = self._load_private_key()
+            
+            # Connect using private key authentication
             self._transport = paramiko.Transport((self.host, self.port))
-            self._transport.connect(username=self.username, password=self.password)
+            self._transport.connect(username=self.username, pkey=private_key)
             self._sftp = paramiko.SFTPClient.from_transport(self._transport)
-            logger.info(f"Connected to SFTP server {self.host}:{self.port}")
+            logger.info(f"Connected to SFTP server {self.host}:{self.port} using private key authentication")
+        except (SftpKeyNotFoundError, SftpKeyFormatError, SftpKeyPassphraseError):
+            # Re-raise key-specific errors as-is
+            raise
         except paramiko.AuthenticationException as e:
-            raise SftpConnectionError(f"Authentication failed for {self.username}@{self.host}: {e}")
+            raise SftpConnectionError(
+                f"Private key authentication failed for {self.username}@{self.host}. "
+                f"Verify that the public key is authorized on the server and the username is correct. "
+                f"Details: {e}"
+            )
+        except (ConnectionRefusedError, OSError) as e:
+            raise SftpConnectionError(
+                f"Network connection failed to {self.host}:{self.port}. "
+                f"Verify the host and port are correct and the server is reachable. "
+                f"Details: {e}"
+            )
         except Exception as e:
             raise SftpConnectionError(f"Failed to connect to {self.host}:{self.port}: {e}")
+    
+    def _load_private_key(self):
+        """Load private key from string content with automatic key type detection."""
+        import io
+        
+        if not self.private_key_content or not self.private_key_content.strip():
+            raise SftpKeyNotFoundError("Private key content is empty or not provided")
+        
+        # Try different key types in order of preference
+        key_types = [
+            (paramiko.Ed25519Key, "Ed25519"),
+            (paramiko.RSAKey, "RSA"),
+            (paramiko.ECDSAKey, "ECDSA"),
+            (paramiko.DSSKey, "DSS"),
+        ]
+        
+        passphrase_required = False
+        
+        for key_class, key_type in key_types:
+            try:
+                key_io = io.StringIO(self.private_key_content)
+                if self.key_passphrase:
+                    key = key_class.from_private_key(key_io, password=self.key_passphrase)
+                else:
+                    key = key_class.from_private_key(key_io)
+                logger.info(f"Loaded {key_type} private key from configuration")
+                return key
+            except paramiko.PasswordRequiredException:
+                passphrase_required = True
+                if not self.key_passphrase:
+                    continue  # Try other key types first
+                else:
+                    # Passphrase provided but still failing, might be wrong passphrase
+                    raise SftpKeyPassphraseError(
+                        f"Private key requires a different passphrase or "
+                        f"the provided passphrase is incorrect for {key_type} key format"
+                    )
+            except (paramiko.SSHException, ValueError) as e:
+                logger.debug(f"Failed to load as {key_type} key: {e}")
+                continue
+            except Exception as e:
+                logger.debug(f"Unexpected error loading {key_type} key: {e}")
+                continue
+        
+        # If we get here, no key type worked
+        if passphrase_required and not self.key_passphrase:
+            raise SftpKeyPassphraseError(
+                "Private key is encrypted but no passphrase provided. "
+                "Set 'sftp_key_passphrase' in configuration."
+            )
+        
+        raise SftpKeyFormatError(
+            "Unable to load private key from provided content. "
+            "Ensure it's a valid SSH private key in supported format (RSA, Ed25519, ECDSA, or DSS). "
+            "The key should start with '-----BEGIN' and end with '-----END' markers."
+        )
 
     def disconnect(self):
         if self._sftp:
@@ -91,11 +171,12 @@ class SapSftpClient:
         return False
 
 
-def get_client(*, host, port, username, password):
+def get_client(*, host, port, username, private_key_content, key_passphrase=None):
     """Factory function to create a configured SapSftpClient."""
     return SapSftpClient(
         host=host,
         port=port,
         username=username,
-        password=password,
+        private_key_content=private_key_content,
+        key_passphrase=key_passphrase,
     )
