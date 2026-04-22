@@ -18,7 +18,7 @@ logger = singer.get_logger()
 
 
 def load_mapping_config(config_path):
-    """Load field mapping configuration from a JSON file."""
+    """Load field mapping configuration defining SAP journal entry transformations."""
     path = Path(config_path)
     if not path.exists():
         raise MappingConfigError(f"Mapping config not found: {config_path}")
@@ -33,18 +33,7 @@ def load_mapping_config(config_path):
 
 
 def apply_field_mapping(df, field_mappings, config):
-    """Apply field mappings to transform input DataFrame into SAP CSV format.
-
-    Supported mapping sources:
-      - "column":      copies a column value directly, with optional date format
-      - "static":      fills every row with a fixed value
-      - "config":      fills every row with a value read from the runtime config
-      - "transform":   maps source values through a lookup dictionary
-      - "conditional": copies a column value only when a condition column matches
-                       a specified value; fills empty string otherwise
-      - "grouping":    assigns D1, D2, D3... values based on unique values in
-                       the specified group_by_column
-    """
+    """Transform journal entry data into SAP-compliant format using configurable mappings."""
     result = pd.DataFrame()
 
     for sap_field, mapping in field_mappings.items():
@@ -101,7 +90,10 @@ def apply_field_mapping(df, field_mappings, config):
                 logger.error(f"Group by column '{group_by_col}' not found for SAP field '{sap_field}'")
                 sys.exit(1)
             
-            # Create mapping of unique Posting Group IDs to D1, D2, D3...
+            # SAP Document Grouping Algorithm:
+            # Assigns sequential D1, D2, D3... identifiers to maintain document relationships
+            # Required for SAP audit trail - all entries with same Posting Group ID must
+            # share the same document group to ensure proper financial reconciliation
             unique_groups = df[group_by_col].unique()
             group_mapping = {group: f"D{i+1}" for i, group in enumerate(unique_groups)}
             result[sap_field] = df[group_by_col].map(group_mapping)
@@ -115,13 +107,16 @@ def apply_field_mapping(df, field_mappings, config):
 
 
 def transform_to_sap_xlsx(config, field_mappings):
-    """Read input JournalEntries.csv and transform to SAP XLSX format."""
+    """Load journal entries and transform to SAP-compliant XLSX format.
+    """
     input_path = f"{config['input_path']}/JournalEntries.csv"
 
     logger.info(f"Reading input CSV from {input_path}")
     df = pd.read_csv(input_path)
     logger.info(f"Loaded {len(df)} rows from input CSV")
 
+    # Pre-validate all required columns to prevent SAP posting failures
+    # SAP requires complete data sets - missing fields cause entire batch rejection
     column_sources = ('column', 'transform', 'conditional', 'grouping')
     required_columns = set()
     for m in field_mappings.values():
@@ -145,7 +140,8 @@ def transform_to_sap_xlsx(config, field_mappings):
 
 
 def upload(config):
-    """Load CSV, transform to SAP XLSX format, and upload via SFTP."""
+    """Complete SAP journal entry processing pipeline: load, transform, and upload.
+    """
     logger.info('Starting upload.')
 
     mapping_path = config.get('mapping_config_path', './mapping_config.json')
@@ -154,11 +150,12 @@ def upload(config):
 
     sap_df = transform_to_sap_xlsx(config, field_mappings)
 
-    # Generate XLSX binary content
+    # Generate XLSX binary for SAP consumption - xlsxwriter engine ensures 
+    # proper formatting and data type preservation required by SAP interfaces
     xlsx_buffer = io.BytesIO()
     sap_df.to_excel(xlsx_buffer, index=False, engine='xlsxwriter')
     xlsx_content = xlsx_buffer.getvalue()
-    xlsx_buffer.close()  # Free memory
+    xlsx_buffer.close()
 
     sftp_client = get_client(
         host=config['sftp_host'],
@@ -169,7 +166,7 @@ def upload(config):
     )
 
     filename = config.get('output_filename', DEFAULT_OUTPUT_FILENAME)
-    # Automatically convert .csv extension to .xlsx
+    # Ensure XLSX extension for SAP compatibility - legacy CSV configs are auto-converted
     if filename.lower().endswith('.csv'):
         filename = filename[:-4] + '.xlsx'
     remote_path = config['sftp_remote_path']
@@ -182,6 +179,7 @@ def upload(config):
 
 @singer.utils.handle_top_exception(logger)
 def main():
+    """Entry point for SAP journal entry processing with Singer framework integration."""
     args = singer.utils.parse_args(REQUIRED_CONFIG_KEYS)
     config = args.config
     upload(config)

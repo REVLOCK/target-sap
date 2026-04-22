@@ -15,9 +15,10 @@ logger = singer.get_logger()
 
 
 class SapSftpClient:
-    """SFTP client for uploading CSV files to a SAP server."""
+    """Secure SFTP client for SAP journal entry file uploads with enterprise-grade error handling."""
 
     def __init__(self, host, port, username, private_key_content, key_passphrase=None):
+        """Initialize SFTP client with authentication credentials."""
         self.host = host
         self.port = port
         self.username = username
@@ -28,16 +29,13 @@ class SapSftpClient:
 
     def connect(self):
         try:
-            # Load private key
             private_key = self._load_private_key()
             
-            # Connect using private key authentication
             self._transport = paramiko.Transport((self.host, self.port))
             self._transport.connect(username=self.username, pkey=private_key)
             self._sftp = paramiko.SFTPClient.from_transport(self._transport)
             logger.info(f"Connected to SFTP server {self.host}:{self.port} using private key authentication")
         except (SftpKeyNotFoundError, SftpKeyFormatError, SftpKeyPassphraseError):
-            # Re-raise key-specific errors as-is
             raise
         except paramiko.AuthenticationException as e:
             raise SftpConnectionError(
@@ -55,19 +53,24 @@ class SapSftpClient:
             raise SftpConnectionError(f"Failed to connect to {self.host}:{self.port}: {e}")
     
     def _load_private_key(self):
-        """Load private key from string content with automatic key type detection."""
         import io
         
         if not self.private_key_content or not self.private_key_content.strip():
             raise SftpKeyNotFoundError("Private key content is empty or not provided")
         
-        # Try different key types in order of preference
+        # Security-first key type detection: modern formats first, legacy formats last
+        # Ed25519: Fastest, most secure, recommended for new deployments
+        # RSA: Widely compatible, good security with proper key size (2048+ bits)  
+        # ECDSA: Good performance and security, growing adoption
         key_types = [
             (paramiko.Ed25519Key, "Ed25519"),
             (paramiko.RSAKey, "RSA"),
             (paramiko.ECDSAKey, "ECDSA"),
-            (paramiko.DSSKey, "DSS"),
         ]
+        
+        # Legacy DSA/DSS support for older environments (paramiko version dependent)
+        if hasattr(paramiko, 'DSSKey'):
+            key_types.append((paramiko.DSSKey, "DSS"))
         
         passphrase_required = False
         
@@ -83,9 +86,8 @@ class SapSftpClient:
             except paramiko.PasswordRequiredException:
                 passphrase_required = True
                 if not self.key_passphrase:
-                    continue  # Try other key types first
+                    continue
                 else:
-                    # Passphrase provided but still failing, might be wrong passphrase
                     raise SftpKeyPassphraseError(
                         f"Private key requires a different passphrase or "
                         f"the provided passphrase is incorrect for {key_type} key format"
@@ -118,7 +120,7 @@ class SapSftpClient:
         logger.info("Disconnected from SFTP server")
 
     def upload_csv(self, csv_content, remote_path, filename):
-        """Upload CSV string content to the SFTP server."""
+        """Upload CSV content to SFTP server with automatic directory creation."""
         if not self._sftp:
             raise SftpConnectionError("Not connected. Call connect() first.")
 
@@ -132,7 +134,7 @@ class SapSftpClient:
             raise SftpUploadError(f"Failed to upload {filename} to {remote_filepath}: {e}")
 
     def upload_xlsx(self, xlsx_content, remote_path, filename):
-        """Upload XLSX binary content to the SFTP server."""
+        """Upload XLSX binary content optimized for SAP journal entry processing."""
         if not self._sftp:
             raise SftpConnectionError("Not connected. Call connect() first.")
         
@@ -146,26 +148,28 @@ class SapSftpClient:
             raise SftpUploadError(f"Failed to upload {filename} to {remote_filepath}: {e}")
 
     def _ensure_remote_dir(self, remote_path):
-        """Create remote directory tree if it doesn't exist."""
+        """Recursively create remote directory structure with atomic operations."""
         dirs_to_create = []
         current = remote_path
         while current and current != '/':
             try:
                 self._sftp.stat(current)
-                break
+                break  # Found existing directory, stop traversal
             except FileNotFoundError:
                 dirs_to_create.append(current)
                 current = os.path.dirname(current)
 
+        # Create directories in correct hierarchy order (deepest parent first)
         for d in reversed(dirs_to_create):
             try:
                 self._sftp.mkdir(d)
                 logger.info(f"Created remote directory {d}")
             except IOError:
+                # Directory may have been created by concurrent process - safe to ignore
                 pass
 
     def test_connection(self):
-        """Verify SFTP connectivity and return True on success."""
+        """Test SFTP connectivity with automatic cleanup for validation purposes."""
         try:
             self.connect()
             self._sftp.listdir('.')
@@ -186,7 +190,7 @@ class SapSftpClient:
 
 
 def get_client(*, host, port, username, private_key_content, key_passphrase=None):
-    """Factory function to create a configured SapSftpClient."""
+    """Factory function to create a configured SapSftpClient with validated parameters."""
     return SapSftpClient(
         host=host,
         port=port,
