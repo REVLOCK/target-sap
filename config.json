@@ -7,7 +7,7 @@
     "sftp_remote_path": "/upload/",
     "input_path": "./data",
     "mapping_config_path": "./mapping_config.json",
-    "output_filename": "journal_entries.csv",
+    "output_filename": "journal_entries.xlsx",
     "company_code": "CZ12",
     "document_type": "FF",
     "account_type": "S",

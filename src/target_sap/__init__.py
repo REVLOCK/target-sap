@@ -1,3 +1,4 @@
+import io
 import json
 import sys
 from pathlib import Path
@@ -98,8 +99,8 @@ def apply_field_mapping(df, field_mappings, config):
     return result
 
 
-def transform_to_sap_csv(config, field_mappings):
-    """Read input JournalEntries.csv and transform to SAP CSV format."""
+def transform_to_sap_xlsx(config, field_mappings):
+    """Read input JournalEntries.csv and transform to SAP XLSX format."""
     input_path = f"{config['input_path']}/JournalEntries.csv"
 
     logger.info(f"Reading input CSV from {input_path}")
@@ -120,22 +121,26 @@ def transform_to_sap_csv(config, field_mappings):
         sys.exit(1)
 
     sap_df = apply_field_mapping(df, field_mappings, config)
-    logger.info(f"Transformed {len(sap_df)} rows into SAP CSV format")
+    logger.info(f"Transformed {len(sap_df)} rows into SAP XLSX format")
 
     return sap_df
 
 
 def upload(config):
-    """Load CSV, transform to SAP format, and upload via SFTP."""
+    """Load CSV, transform to SAP XLSX format, and upload via SFTP."""
     logger.info('Starting upload.')
 
     mapping_path = config.get('mapping_config_path', './mapping_config.json')
     field_mappings = load_mapping_config(mapping_path)
     logger.info(f"Loaded field mappings: {list(field_mappings.keys())}")
 
-    sap_df = transform_to_sap_csv(config, field_mappings)
+    sap_df = transform_to_sap_xlsx(config, field_mappings)
 
-    csv_content = sap_df.to_csv(index=False)
+    # Generate XLSX binary content
+    xlsx_buffer = io.BytesIO()
+    sap_df.to_excel(xlsx_buffer, index=False, engine='xlsxwriter')
+    xlsx_content = xlsx_buffer.getvalue()
+    xlsx_buffer.close()  # Free memory
 
     sftp_client = get_client(
         host=config['sftp_host'],
@@ -146,10 +151,13 @@ def upload(config):
     )
 
     filename = config.get('output_filename', DEFAULT_OUTPUT_FILENAME)
+    # Automatically convert .csv extension to .xlsx
+    if filename.lower().endswith('.csv'):
+        filename = filename[:-4] + '.xlsx'
     remote_path = config['sftp_remote_path']
 
     with sftp_client:
-        sftp_client.upload_csv(csv_content, remote_path, filename)
+        sftp_client.upload_xlsx(xlsx_content, remote_path, filename)
 
     logger.info('Upload completed')
 

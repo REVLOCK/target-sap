@@ -131,6 +131,20 @@ class SapSftpClient:
         except IOError as e:
             raise SftpUploadError(f"Failed to upload {filename} to {remote_filepath}: {e}")
 
+    def upload_xlsx(self, xlsx_content, remote_path, filename):
+        """Upload XLSX binary content to the SFTP server."""
+        if not self._sftp:
+            raise SftpConnectionError("Not connected. Call connect() first.")
+        
+        remote_filepath = os.path.join(remote_path, filename)
+        try:
+            self._ensure_remote_dir(remote_path)
+            with self._sftp.open(remote_filepath, 'wb') as remote_file:
+                remote_file.write(xlsx_content)
+            logger.info(f"Uploaded {filename} to {remote_filepath}")
+        except IOError as e:
+            raise SftpUploadError(f"Failed to upload {filename} to {remote_filepath}: {e}")
+
     def _ensure_remote_dir(self, remote_path):
         """Create remote directory tree if it doesn't exist."""
         dirs_to_create = []
