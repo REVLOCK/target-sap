@@ -1,5 +1,9 @@
 {
   "field_mappings": {
+    "Grouping": {
+      "source": "grouping",
+      "group_by_column": "Posting Group Id"
+    },
     "CompanyCode_BUKRS": {
       "source": "config",
       "config_key": "company_code"
@@ -19,12 +23,12 @@
       "config_key": "document_type"
     },
     "DocumentHeaderText_BKTXT": {
-      "source": "column",
-      "column": "Posting Group Id"
+      "source": "static",
+      "value": ""
     },
     "Reference_XBLNR": {
-      "source": "column",
-      "column": "Posting Id"
+      "source": "static",
+      "value": ""
     },
     "AccountCode": {
       "source": "column",
@@ -33,14 +37,6 @@
     "AccountType_Koart": {
       "source": "config",
       "config_key": "account_type"
-    },
-    "SpecialGLInd_Umskz": {
-      "source": "static",
-      "value": ""
-    },
-    "AmountLC_DMBTR": {
-      "source": "column",
-      "column": "Amount"
     },
     "AmountDC_WRBTR": {
       "source": "column",
@@ -54,27 +50,11 @@
       "source": "static",
       "value": ""
     },
-    "TaxAmountLC_HWSTE": {
-      "source": "conditional",
-      "column": "Amount",
-      "condition_column": "Accounting Event Type",
-      "condition_value": "Tax"
-    },
     "TaxAmountDC_WMWST": {
-      "source": "conditional",
-      "column": "Amount",
-      "condition_column": "Accounting Event Type",
-      "condition_value": "Tax"
+      "source": "static",
+      "value": ""
     },
     "BusinessArea": {
-      "source": "static",
-      "value": ""
-    },
-    "CostCenter": {
-      "source": "static",
-      "value": ""
-    },
-    "InternalOrder": {
       "source": "static",
       "value": ""
     },
@@ -82,33 +62,9 @@
       "source": "config",
       "config_key": "profit_center"
     },
-    "ValeurDate": {
-      "source": "static",
-      "value": ""
-    },
     "Text_SGTXT": {
       "source": "column",
-      "column": "Account Name"
-    },
-    "Assignment_ZUONR": {
-      "source": "static",
-      "value": ""
-    },
-    "ReferenceKey1_XREF1": {
-      "source": "column",
-      "column": "Customer Id"
-    },
-    "ReferenceKey3_XREF3": {
-      "source": "column",
-      "column": "Posting Id"
-    },
-    "TradingPartner": {
-      "source": "static",
-      "value": ""
-    },
-    "Period": {
-      "source": "column",
-      "column": "Actg Period"
+      "column": "Product Id"
     }
   }
 }

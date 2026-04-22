@@ -42,6 +42,8 @@ def apply_field_mapping(df, field_mappings, config):
       - "transform":   maps source values through a lookup dictionary
       - "conditional": copies a column value only when a condition column matches
                        a specified value; fills empty string otherwise
+      - "grouping":    assigns D1, D2, D3... values based on unique values in
+                       the specified group_by_column
     """
     result = pd.DataFrame()
 
@@ -57,7 +59,7 @@ def apply_field_mapping(df, field_mappings, config):
             if 'format' in mapping:
                 result[sap_field] = pd.to_datetime(df[col_name]).dt.strftime(mapping['format'])
             else:
-                result[sap_field] = df[col_name]
+                result[sap_field] = df[col_name].fillna('')  # Replace NaN with empty string
 
         elif source == 'static':
             result[sap_field] = mapping['value']
@@ -93,6 +95,19 @@ def apply_field_mapping(df, field_mappings, config):
                     sys.exit(1)
             result[sap_field] = df[col_name].where(df[cond_col] == cond_val, '')
 
+        elif source == 'grouping':
+            group_by_col = mapping['group_by_column']
+            if group_by_col not in df.columns:
+                logger.error(f"Group by column '{group_by_col}' not found for SAP field '{sap_field}'")
+                sys.exit(1)
+            
+            # Create mapping of unique Posting Group IDs to D1, D2, D3...
+            unique_groups = df[group_by_col].unique()
+            group_mapping = {group: f"D{i+1}" for i, group in enumerate(unique_groups)}
+            result[sap_field] = df[group_by_col].map(group_mapping)
+            
+            logger.info(f"Created grouping for '{sap_field}': {len(unique_groups)} unique groups mapped to {list(group_mapping.values())}")
+
         else:
             raise MappingConfigError(f"Unknown mapping source '{source}' for field '{sap_field}'")
 
@@ -107,11 +122,14 @@ def transform_to_sap_xlsx(config, field_mappings):
     df = pd.read_csv(input_path)
     logger.info(f"Loaded {len(df)} rows from input CSV")
 
-    column_sources = ('column', 'transform', 'conditional')
+    column_sources = ('column', 'transform', 'conditional', 'grouping')
     required_columns = set()
     for m in field_mappings.values():
         if m.get('source') in column_sources:
-            required_columns.add(m['column'])
+            if 'column' in m:
+                required_columns.add(m['column'])
+            elif 'group_by_column' in m:
+                required_columns.add(m['group_by_column'])
         if m.get('source') == 'conditional' and 'condition_column' in m:
             required_columns.add(m['condition_column'])
 
