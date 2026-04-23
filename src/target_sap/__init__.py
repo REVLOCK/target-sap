@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -144,7 +145,7 @@ def upload(config):
     """
     logger.info('Starting upload.')
 
-    mapping_path = './mapping_config.json'
+    mapping_path = os.path.join(os.path.dirname(__file__), 'mapping_config.json')
     field_mappings = load_mapping_config(mapping_path)
     logger.info(f"Loaded field mappings: {list(field_mappings.keys())}")
 
