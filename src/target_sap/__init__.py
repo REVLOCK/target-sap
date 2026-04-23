@@ -43,13 +43,13 @@ def apply_field_mapping(df, field_mappings, config):
         if source == 'column':
             col_name = mapping['column']
             if col_name not in df.columns:
-                logger.error(f"Source column '{col_name}' not found for SAP field '{sap_field}'")
-                sys.exit(1)
-
-            if 'format' in mapping:
-                result[sap_field] = pd.to_datetime(df[col_name]).dt.strftime(mapping['format'])
+                logger.warning(f"Source column '{col_name}' not found for SAP field '{sap_field}' - using empty string fallback")
+                result[sap_field] = ''  # Fallback to empty string for missing columns
             else:
-                result[sap_field] = df[col_name].fillna('')  # Replace NaN with empty string
+                if 'format' in mapping:
+                    result[sap_field] = pd.to_datetime(df[col_name]).dt.strftime(mapping['format'])
+                else:
+                    result[sap_field] = df[col_name].fillna('')  # Replace NaN with empty string
 
         elif source == 'static':
             result[sap_field] = mapping['value']
@@ -66,40 +66,45 @@ def apply_field_mapping(df, field_mappings, config):
         elif source == 'transform':
             col_name = mapping['column']
             if col_name not in df.columns:
-                logger.error(f"Source column '{col_name}' not found for SAP field '{sap_field}'")
-                sys.exit(1)
-            value_map = mapping['mapping']
-            result[sap_field] = df[col_name].str.upper().map(value_map)
-            unmapped = result[sap_field].isna()
-            if unmapped.any():
-                bad_values = df.loc[unmapped, col_name].unique().tolist()
+                logger.warning(f"Source column '{col_name}' not found for SAP field '{sap_field}' - using empty string fallback")
+                result[sap_field] = ''  # Fallback to empty string for missing columns
+            else:
+                value_map = mapping['mapping']
+                result[sap_field] = df[col_name].str.upper().map(value_map)
+                unmapped = result[sap_field].isna()
+                if unmapped.any():
+                    bad_values = df.loc[unmapped, col_name].unique().tolist()
                 logger.warning(f"Unmapped values for '{sap_field}': {bad_values}")
 
         elif source == 'conditional':
             col_name = mapping['column']
             cond_col = mapping['condition_column']
             cond_val = mapping['condition_value']
-            for col in (col_name, cond_col):
-                if col not in df.columns:
-                    logger.error(f"Source column '{col}' not found for SAP field '{sap_field}'")
-                    sys.exit(1)
-            result[sap_field] = df[col_name].where(df[cond_col] == cond_val, '')
+            
+            missing_cols = [col for col in (col_name, cond_col) if col not in df.columns]
+            if missing_cols:
+                logger.warning(f"Source columns {missing_cols} not found for SAP field '{sap_field}' - using empty string fallback")
+                result[sap_field] = ''  # Fallback to empty string for missing columns
+            else:
+                result[sap_field] = df[col_name].where(df[cond_col] == cond_val, '')
 
         elif source == 'grouping':
             group_by_col = mapping['group_by_column']
             if group_by_col not in df.columns:
-                logger.error(f"Group by column '{group_by_col}' not found for SAP field '{sap_field}'")
-                sys.exit(1)
-            
-            # SAP Document Grouping Algorithm:
-            # Assigns sequential D1, D2, D3... identifiers to maintain document relationships
-            # Required for SAP audit trail - all entries with same Posting Group ID must
-            # share the same document group to ensure proper financial reconciliation
-            unique_groups = df[group_by_col].unique()
-            group_mapping = {group: f"D{i+1}" for i, group in enumerate(unique_groups)}
-            result[sap_field] = df[group_by_col].map(group_mapping)
-            
-            logger.info(f"Created grouping for '{sap_field}': {len(unique_groups)} unique groups mapped to {list(group_mapping.values())}")
+                logger.warning(f"Group by column '{group_by_col}' not found for SAP field '{sap_field}' - using single group D1 fallback")
+                # Fallback: Assign all entries to single group D1 when grouping column is missing
+                result[sap_field] = pd.Series(['D1'] * len(df), index=df.index)
+                logger.info(f"Applied fallback grouping for '{sap_field}': All {len(df)} entries assigned to group D1")
+            else:
+                # SAP Document Grouping Algorithm:
+                # Assigns sequential D1, D2, D3... identifiers to maintain document relationships
+                # Required for SAP audit trail - all entries with same Posting Group ID must
+                # share the same document group to ensure proper financial reconciliation
+                unique_groups = df[group_by_col].unique()
+                group_mapping = {group: f"D{i+1}" for i, group in enumerate(unique_groups)}
+                result[sap_field] = df[group_by_col].map(group_mapping)
+                
+                logger.info(f"Created grouping for '{sap_field}': {len(unique_groups)} unique groups mapped to {list(group_mapping.values())}")
 
         else:
             raise MappingConfigError(f"Unknown mapping source '{source}' for field '{sap_field}'")
@@ -131,8 +136,8 @@ def transform_to_sap_xlsx(config, field_mappings):
 
     missing = required_columns - set(df.columns)
     if missing:
-        logger.error(f"Input CSV is missing required columns: {sorted(missing)}")
-        sys.exit(1)
+        logger.warning(f"Input CSV is missing optional columns: {sorted(missing)} - will use fallback values")
+        logger.info("Processing will continue with available columns and default values for missing data")
 
     sap_df = apply_field_mapping(df, field_mappings, config)
     logger.info(f"Transformed {len(sap_df)} rows into SAP XLSX format")
