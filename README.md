@@ -30,8 +30,6 @@ Optional keys:
 | --- | --- | --- |
 | `sftp_port` | `22` | SFTP port |
 | `sftp_key_passphrase` | `""` | Passphrase for private key (if encrypted) |
-| `mapping_config_path` | `./mapping_config.json` | Path to the mapping JSON |
-| `output_filename` | `journal_entries.xlsx` | Remote output file name (auto-converts .csv to .xlsx) |
 
 SAP field values (used by `source: "config"` mappings):
 
@@ -48,6 +46,14 @@ The system implements dynamic grouping that assigns D1, D2, D3... values based o
 - All journal entries with the same Posting Group ID receive the same D value
 - This ensures proper grouping of related journal entries in SAP
 
+## Automatic File Naming
+The system automatically generates unique output filenames with timestamps to prevent file overwrites:
+- **Format**: `journal_entries_YYYYMMDD_HHMMSS.xlsx`
+- **Example**: `journal_entries_20240423_143022.xlsx`
+- **Benefits**: Multiple uploads per day without conflicts, clear upload timing identification
+
+The mapping configuration is fixed to `./mapping_config.json` to ensure consistency across deployments.
+
 ### Example `config.json`
 ```json
 {
@@ -58,8 +64,6 @@ The system implements dynamic grouping that assigns D1, D2, D3... values based o
   "sftp_key_passphrase": "",
   "sftp_remote_path": "/incoming/journal_entries/",
   "input_path": "./data",
-  "mapping_config_path": "./mapping_config.json",
-  "output_filename": "journal_entries.xlsx",
   "company_code": "CZ12",
   "document_type": "FC",
   "account_type": "S",

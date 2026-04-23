@@ -7,7 +7,6 @@ REQUIRED_CONFIG_KEYS = [
 ]
 
 DEFAULT_SFTP_PORT = 22
-DEFAULT_OUTPUT_FILENAME = 'journal_entries.xlsx'
 
 SAP_CSV_COLUMNS = [
     'CompanyCode_BUKRS',

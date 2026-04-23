@@ -1,6 +1,7 @@
 import io
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -8,7 +9,6 @@ import singer
 
 from target_sap.client import get_client
 from target_sap.const import (
-    DEFAULT_OUTPUT_FILENAME,
     DEFAULT_SFTP_PORT,
     REQUIRED_CONFIG_KEYS,
 )
@@ -144,7 +144,7 @@ def upload(config):
     """
     logger.info('Starting upload.')
 
-    mapping_path = config.get('mapping_config_path', './mapping_config.json')
+    mapping_path = './mapping_config.json'
     field_mappings = load_mapping_config(mapping_path)
     logger.info(f"Loaded field mappings: {list(field_mappings.keys())}")
 
@@ -165,10 +165,9 @@ def upload(config):
         key_passphrase=config.get('sftp_key_passphrase'),
     )
 
-    filename = config.get('output_filename', DEFAULT_OUTPUT_FILENAME)
-    # Ensure XLSX extension for SAP compatibility - legacy CSV configs are auto-converted
-    if filename.lower().endswith('.csv'):
-        filename = filename[:-4] + '.xlsx'
+    # Generate timestamp-based filename for unique file identification
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'journal_entries_{timestamp}.xlsx'
     remote_path = config['sftp_remote_path']
 
     with sftp_client:
