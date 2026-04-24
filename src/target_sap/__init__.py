@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import socket
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -149,6 +150,13 @@ def upload(config):
     """Complete SAP journal entry processing pipeline: load, transform, and upload.
     """
     logger.info('Starting upload.')
+
+    try:
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+        logger.info(f"Running on host={hostname} ip={local_ip}")
+    except Exception:
+        logger.info("Running on host=unknown ip=unknown")
 
     mapping_path = os.path.join(os.path.dirname(__file__), 'mapping_config.json')
     field_mappings = load_mapping_config(mapping_path)

@@ -7,7 +7,7 @@ A [Singer](https://www.singer.io/) / [hotglue](https://hotglue.xyz)-style target
 2. Loads comprehensive field mappings from `mapping_config.json` (path configurable).
 3. Applies dynamic grouping logic that assigns D1, D2, D3... values based on unique Posting Group IDs.
 4. Builds SAP-compliant XLSX output with complete field mappings including company codes, account details, amounts, dates, and grouping identifiers.
-5. Uploads the XLSX file to the remote path on SFTP using private key authentication.
+5. Uploads the XLSX file to the remote path on SFTP using password authentication.
 ## Requirements
 - Python 3.7+
 ## Install
@@ -22,14 +22,13 @@ Create a JSON config file (see `sample_config.json`). The following keys are **r
 | --- | --- |
 | `sftp_host` | SFTP server hostname |
 | `sftp_username` | SFTP user |
-| `sftp_private_key` | Private key content for SFTP authentication |
+| `sftp_password` | Password for SFTP authentication |
 | `sftp_remote_path` | Remote directory where the output file is written (created if missing) |
 | `input_path` | Local directory containing `JournalEntries.csv` |
 Optional keys:
 | Key | Default | Description |
 | --- | --- | --- |
 | `sftp_port` | `22` | SFTP port |
-| `sftp_key_passphrase` | `""` | Passphrase for private key (if encrypted) |
 
 SAP field values (used by `source: "config"` mappings):
 
@@ -60,8 +59,7 @@ The mapping configuration is fixed to `./mapping_config.json` to ensure consiste
   "sftp_host": "sap-server.example.com",
   "sftp_port": 22,
   "sftp_username": "sap_user",
-  "sftp_private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n[Your private key content here]\n-----END OPENSSH PRIVATE KEY-----",
-  "sftp_key_passphrase": "",
+  "sftp_password": "your_password_here",
   "sftp_remote_path": "/incoming/journal_entries/",
   "input_path": "./data",
   "company_code": "CZ12",
@@ -211,7 +209,7 @@ SUCCESS: All 62 unique groups correctly mapped to ['D1', 'D2', 'D3', ...]
 
 ## Project layout
 - `src/target_sap/__init__.py` — entry point, field mapping logic, XLSX generation, SFTP upload orchestration
-- `src/target_sap/client.py` — Paramiko SFTP client with private key authentication
+- `src/target_sap/client.py` — Paramiko SFTP client with password authentication
 - `src/target_sap/const.py` — required config keys and defaults
 - `src/target_sap/exceptions.py` — `SftpConnectionError`, `SftpUploadError`, `MappingConfigError`
 - `mapping_config.json` — complete SAP field mappings with grouping logic
@@ -222,7 +220,7 @@ SUCCESS: All 62 unique groups correctly mapped to ['D1', 'D2', 'D3', ...]
 - **Dynamic Grouping**: Automatic D1, D2, D3... assignment based on unique Posting Group IDs
 - **Complete SAP Mapping**: All standard SAP journal entry fields supported
 - **XLSX Output**: Generates Excel format for SAP consumption
-- **Private Key Auth**: Secure SFTP authentication using private keys
+- **Password Auth**: Secure SFTP authentication using username and password
 - **Flexible Configuration**: Config-driven field mappings and static values
 ## License
 See `LICENSE` in the repository (GNU Affero General Public License v3 per `setup.cfg`).
