@@ -63,6 +63,9 @@ class SapSftpClient:
         if not self.private_key_content or not self.private_key_content.strip():
             raise SftpKeyNotFoundError("Private key content is empty or not provided")
         
+        normalized_key_content = self._normalize_private_key_content(self.private_key_content)
+        logger.error(f"DEBUG normalized key repr in _load_private_key: {normalized_key_content!r}")
+
         # Security-first key type detection: modern formats first, legacy formats last
         # Ed25519: Fastest, most secure, recommended for new deployments
         # RSA: Widely compatible, good security with proper key size (2048+ bits)  
@@ -81,7 +84,7 @@ class SapSftpClient:
         
         for key_class, key_type in key_types:
             try:
-                key_io = io.StringIO(self.private_key_content)
+                key_io = io.StringIO(normalized_key_content)
                 if self.key_passphrase:
                     key = key_class.from_private_key(key_io, password=self.key_passphrase)
                 else:
@@ -116,6 +119,27 @@ class SapSftpClient:
             "Ensure it's a valid SSH private key in supported format (RSA, Ed25519, ECDSA, or DSS). "
             "The key should start with '-----BEGIN' and end with '-----END' markers."
         )
+
+    def _normalize_private_key_content(self, key_content):
+        """Normalize key content from UI/JSON transport quirks before parsing."""
+        if not key_content:
+            return key_content
+
+        normalized = key_content.replace("\\n", "\n").replace("\r\n", "\n").replace("\r", "\n")
+
+        lines = normalized.split("\n")
+        if len(lines) < 3:
+            return normalized.strip()
+
+        header = lines[0].strip()
+        footer = lines[-1].strip()
+        body_lines = lines[1:-1]
+
+        # Remove accidental spaces/tabs in base64 payload lines.
+        cleaned_body = [line.replace(" ", "").replace("\t", "").strip() for line in body_lines]
+        cleaned_body = [line for line in cleaned_body if line]
+
+        return "\n".join([header] + cleaned_body + [footer]).strip()
 
     def disconnect(self):
         if self._sftp:
