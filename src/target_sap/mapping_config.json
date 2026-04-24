@@ -11,12 +11,12 @@
     "PostingDate_BUDAT": {
       "source": "column",
       "column": "Transaction Date",
-      "format": "%Y%m%d"
+      "format": "%-m/%-d/%Y"
     },
     "DocumentDate_BLDAT": {
       "source": "column",
       "column": "Transaction Date",
-      "format": "%Y%m%d"
+      "format": "%-m/%-d/%Y"
     },
     "DocumentType_BLART": {
       "source": "config",
@@ -39,8 +39,10 @@
       "config_key": "account_type"
     },
     "AmountDC_WRBTR": {
-      "source": "column",
-      "column": "Amount"
+      "source": "signed_amount",
+      "column": "Amount",
+      "sign_column": "Type",
+      "negate_when": "Debit"
     },
     "DocumentCurrency": {
       "source": "column",

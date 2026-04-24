@@ -77,6 +77,22 @@ def apply_field_mapping(df, field_mappings, config):
                     bad_values = df.loc[unmapped, col_name].unique().tolist()
                 logger.warning(f"Unmapped values for '{sap_field}': {bad_values}")
 
+        elif source == 'signed_amount':
+            col_name = mapping['column']
+            sign_col = mapping['sign_column']
+            negate_when = mapping['negate_when']
+
+            missing_cols = [c for c in (col_name, sign_col) if c not in df.columns]
+            if missing_cols:
+                logger.warning(f"Source columns {missing_cols} not found for SAP field '{sap_field}' - using empty string fallback")
+                result[sap_field] = ''
+            else:
+                amount = pd.to_numeric(df[col_name], errors='coerce').fillna(0)
+                result[sap_field] = amount.where(
+                    df[sign_col].str.strip().str.upper() != negate_when.upper(),
+                    -amount
+                )
+
         elif source == 'conditional':
             col_name = mapping['column']
             cond_col = mapping['condition_column']
