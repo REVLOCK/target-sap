@@ -173,7 +173,7 @@ def upload(config):
 
     sftp_client = get_client(
         host=config['sftp_host'],
-        port=config.get('sftp_port', DEFAULT_SFTP_PORT),
+        port=int(config.get('sftp_port', DEFAULT_SFTP_PORT)),
         username=config['sftp_username'],
         password=config['sftp_password'],
     )
