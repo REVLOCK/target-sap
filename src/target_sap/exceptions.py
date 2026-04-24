@@ -31,17 +31,3 @@ class MappingConfigError(SapSftpError):
     """Field mapping configuration error - invalid structure or missing required mappings."""
 
 
-class SftpKeyError(SftpConnectionError):
-    """Base SSH private key authentication error with diagnostic capabilities."""
-
-
-class SftpKeyNotFoundError(SftpKeyError):
-    """SSH private key content missing or empty - configuration issue."""
-
-
-class SftpKeyFormatError(SftpKeyError):
-    """SSH private key format invalid or unsupported by paramiko library."""
-
-
-class SftpKeyPassphraseError(SftpKeyError):
-    """SSH private key passphrase missing or incorrect for encrypted key."""

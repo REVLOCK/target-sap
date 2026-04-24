@@ -167,8 +167,7 @@ def upload(config):
         host=config['sftp_host'],
         port=config.get('sftp_port', DEFAULT_SFTP_PORT),
         username=config['sftp_username'],
-        private_key_content=config['sftp_private_key'],
-        key_passphrase=config.get('sftp_key_passphrase'),
+        password=config['sftp_password'],
     )
 
     # Generate timestamp-based filename for unique file identification

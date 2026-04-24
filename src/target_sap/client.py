@@ -4,45 +4,34 @@ import paramiko
 import singer
 
 from target_sap.exceptions import (
-    SftpConnectionError, 
+    SftpConnectionError,
     SftpUploadError,
-    SftpKeyNotFoundError,
-    SftpKeyFormatError,
-    SftpKeyPassphraseError,
 )
 
 logger = singer.get_logger()
 
 
 class SapSftpClient:
-    """Secure SFTP client for SAP journal entry file uploads with enterprise-grade error handling."""
+    """Secure SFTP client for SAP journal entry file uploads."""
 
-    def __init__(self, host, port, username, private_key_content, key_passphrase=None):
-        """Initialize SFTP client with authentication credentials."""
+    def __init__(self, host, port, username, password):
         self.host = host
         self.port = port
         self.username = username
-        self.private_key_content = private_key_content
-        self.key_passphrase = key_passphrase
+        self.password = password
         self._transport = None
         self._sftp = None
 
     def connect(self):
         try:
-            private_key = self._load_private_key()
-            
-            logger.info(f"DEBUG private key content passed to connect: {self.private_key_content}")
-            logger.info(f"DEBUG private key object passed to connect: {private_key!r}")
             self._transport = paramiko.Transport((self.host, self.port))
-            self._transport.connect(username=self.username, pkey=private_key)
+            self._transport.connect(username=self.username, password=self.password)
             self._sftp = paramiko.SFTPClient.from_transport(self._transport)
-            logger.info(f"Connected to SFTP server {self.host}:{self.port} using private key authentication")
-        except (SftpKeyNotFoundError, SftpKeyFormatError, SftpKeyPassphraseError):
-            raise
+            logger.info(f"Connected to SFTP server {self.host}:{self.port}")
         except paramiko.AuthenticationException as e:
             raise SftpConnectionError(
-                f"Private key authentication failed for {self.username}@{self.host}. "
-                f"Verify that the public key is authorized on the server and the username is correct. "
+                f"Password authentication failed for {self.username}@{self.host}. "
+                f"Verify the username and password are correct. "
                 f"Details: {e}"
             )
         except (ConnectionRefusedError, OSError) as e:
@@ -53,93 +42,6 @@ class SapSftpClient:
             )
         except Exception as e:
             raise SftpConnectionError(f"Failed to connect to {self.host}:{self.port}: {e}")
-    
-    def _load_private_key(self):
-        import io
-        
-        logger.error(f"DEBUG key received in _load_private_key: {self.private_key_content}")
-        logger.error(f"DEBUG key repr in _load_private_key: {self.private_key_content!r}")
-
-        if not self.private_key_content or not self.private_key_content.strip():
-            raise SftpKeyNotFoundError("Private key content is empty or not provided")
-        
-        normalized_key_content = self._normalize_private_key_content(self.private_key_content)
-        logger.error(f"DEBUG normalized key repr in _load_private_key: {normalized_key_content!r}")
-
-        # Security-first key type detection: modern formats first, legacy formats last
-        # Ed25519: Fastest, most secure, recommended for new deployments
-        # RSA: Widely compatible, good security with proper key size (2048+ bits)  
-        # ECDSA: Good performance and security, growing adoption
-        key_types = [
-            (paramiko.Ed25519Key, "Ed25519"),
-            (paramiko.RSAKey, "RSA"),
-            (paramiko.ECDSAKey, "ECDSA"),
-        ]
-        
-        # Legacy DSA/DSS support for older environments (paramiko version dependent)
-        if hasattr(paramiko, 'DSSKey'):
-            key_types.append((paramiko.DSSKey, "DSS"))
-        
-        passphrase_required = False
-        
-        for key_class, key_type in key_types:
-            try:
-                key_io = io.StringIO(normalized_key_content)
-                if self.key_passphrase:
-                    key = key_class.from_private_key(key_io, password=self.key_passphrase)
-                else:
-                    key = key_class.from_private_key(key_io)
-                logger.info(f"Loaded {key_type} private key from configuration")
-                return key
-            except paramiko.PasswordRequiredException:
-                passphrase_required = True
-                if not self.key_passphrase:
-                    continue
-                else:
-                    raise SftpKeyPassphraseError(
-                        f"Private key requires a different passphrase or "
-                        f"the provided passphrase is incorrect for {key_type} key format"
-                    )
-            except (paramiko.SSHException, ValueError) as e:
-                logger.error(f"DEBUG failed to load as {key_type}: {e}")
-                continue
-            except Exception as e:
-                logger.error(f"DEBUG unexpected error loading {key_type}: {e}")
-                continue
-        
-        # If we get here, no key type worked
-        if passphrase_required and not self.key_passphrase:
-            raise SftpKeyPassphraseError(
-                "Private key is encrypted but no passphrase provided. "
-                "Set 'sftp_key_passphrase' in configuration."
-            )
-        
-        raise SftpKeyFormatError(
-            "Unable to load private key from provided content. "
-            "Ensure it's a valid SSH private key in supported format (RSA, Ed25519, ECDSA, or DSS). "
-            "The key should start with '-----BEGIN' and end with '-----END' markers."
-        )
-
-    def _normalize_private_key_content(self, key_content):
-        """Normalize key content from UI/JSON transport quirks before parsing."""
-        if not key_content:
-            return key_content
-
-        normalized = key_content.replace("\\n", "\n").replace("\r\n", "\n").replace("\r", "\n")
-
-        lines = normalized.split("\n")
-        if len(lines) < 3:
-            return normalized.strip()
-
-        header = lines[0].strip()
-        footer = lines[-1].strip()
-        body_lines = lines[1:-1]
-
-        # Remove accidental spaces/tabs in base64 payload lines.
-        cleaned_body = [line.replace(" ", "").replace("\t", "").strip() for line in body_lines]
-        cleaned_body = [line for line in cleaned_body if line]
-
-        return "\n".join([header] + cleaned_body + [footer]).strip()
 
     def disconnect(self):
         if self._sftp:
@@ -183,18 +85,16 @@ class SapSftpClient:
         while current and current != '/':
             try:
                 self._sftp.stat(current)
-                break  # Found existing directory, stop traversal
+                break
             except FileNotFoundError:
                 dirs_to_create.append(current)
                 current = os.path.dirname(current)
 
-        # Create directories in correct hierarchy order (deepest parent first)
         for d in reversed(dirs_to_create):
             try:
                 self._sftp.mkdir(d)
                 logger.info(f"Created remote directory {d}")
             except IOError:
-                # Directory may have been created by concurrent process - safe to ignore
                 pass
 
     def test_connection(self):
@@ -218,12 +118,11 @@ class SapSftpClient:
         return False
 
 
-def get_client(*, host, port, username, private_key_content, key_passphrase=None):
+def get_client(*, host, port, username, password):
     """Factory function to create a configured SapSftpClient with validated parameters."""
     return SapSftpClient(
         host=host,
         port=port,
         username=username,
-        private_key_content=private_key_content,
-        key_passphrase=key_passphrase,
+        password=password,
     )
