@@ -57,6 +57,9 @@ class SapSftpClient:
     def _load_private_key(self):
         import io
         
+        logger.error(f"DEBUG key received in _load_private_key: {self.private_key_content}")
+        logger.error(f"DEBUG key repr in _load_private_key: {self.private_key_content!r}")
+
         if not self.private_key_content or not self.private_key_content.strip():
             raise SftpKeyNotFoundError("Private key content is empty or not provided")
         
@@ -95,10 +98,10 @@ class SapSftpClient:
                         f"the provided passphrase is incorrect for {key_type} key format"
                     )
             except (paramiko.SSHException, ValueError) as e:
-                logger.debug(f"Failed to load as {key_type} key: {e}")
+                logger.error(f"DEBUG failed to load as {key_type}: {e}")
                 continue
             except Exception as e:
-                logger.debug(f"Unexpected error loading {key_type} key: {e}")
+                logger.error(f"DEBUG unexpected error loading {key_type}: {e}")
                 continue
         
         # If we get here, no key type worked
