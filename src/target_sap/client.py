@@ -31,6 +31,8 @@ class SapSftpClient:
         try:
             private_key = self._load_private_key()
             
+            logger.info(f"DEBUG private key content passed to connect: {self.private_key_content}")
+            logger.info(f"DEBUG private key object passed to connect: {private_key!r}")
             self._transport = paramiko.Transport((self.host, self.port))
             self._transport.connect(username=self.username, pkey=private_key)
             self._sftp = paramiko.SFTPClient.from_transport(self._transport)
