@@ -50,20 +50,6 @@ class SapSftpClient:
             self._transport.close()
         logger.info("Disconnected from SFTP server")
 
-    def upload_csv(self, csv_content, remote_path, filename):
-        """Upload CSV content to SFTP server with automatic directory creation."""
-        if not self._sftp:
-            raise SftpConnectionError("Not connected. Call connect() first.")
-
-        remote_filepath = os.path.join(remote_path, filename)
-        try:
-            self._ensure_remote_dir(remote_path)
-            with self._sftp.open(remote_filepath, 'w') as remote_file:
-                remote_file.write(csv_content)
-            logger.info(f"Uploaded {filename} to {remote_filepath}")
-        except IOError as e:
-            raise SftpUploadError(f"Failed to upload {filename} to {remote_filepath}: {e}")
-
     def upload_xlsx(self, xlsx_content, remote_path, filename):
         """Upload XLSX binary content optimized for SAP journal entry processing."""
         if not self._sftp:

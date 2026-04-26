@@ -49,12 +49,14 @@
       "column": "Currency Code"
     },
     "TaxCode": {
-      "source": "static",
-      "value": ""
+      "source": "column",
+      "column": "Tax Code"
     },
     "TaxAmountDC_WMWST": {
-      "source": "static",
-      "value": ""
+      "source": "dual_column_amount",
+      "debit_column": "Debit Tax",
+      "credit_column": "Credit Tax",
+      "negate": "debit"
     },
     "BusinessArea": {
       "source": "static",

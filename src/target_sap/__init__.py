@@ -2,7 +2,6 @@ import io
 import json
 import os
 import socket
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -75,7 +74,7 @@ def apply_field_mapping(df, field_mappings, config):
                 unmapped = result[sap_field].isna()
                 if unmapped.any():
                     bad_values = df.loc[unmapped, col_name].unique().tolist()
-                logger.warning(f"Unmapped values for '{sap_field}': {bad_values}")
+                    logger.warning(f"Unmapped values for '{sap_field}': {bad_values}")
 
         elif source == 'signed_amount':
             col_name = mapping['column']
@@ -92,6 +91,23 @@ def apply_field_mapping(df, field_mappings, config):
                     df[sign_col].str.strip().str.upper() != negate_when.upper(),
                     -amount
                 )
+
+        elif source == 'dual_column_amount':
+            debit_col = mapping['debit_column']
+            credit_col = mapping['credit_column']
+            negate = mapping.get('negate', 'debit')
+
+            missing_cols = [c for c in (debit_col, credit_col) if c not in df.columns]
+            if missing_cols:
+                logger.warning(f"Source columns {missing_cols} not found for SAP field '{sap_field}' - using empty string fallback")
+                result[sap_field] = ''
+            else:
+                debit = pd.to_numeric(df[debit_col], errors='coerce').fillna(0)
+                credit = pd.to_numeric(df[credit_col], errors='coerce').fillna(0)
+                if negate == 'debit':
+                    result[sap_field] = credit.where(credit > 0, -debit)
+                else:
+                    result[sap_field] = debit.where(debit > 0, -credit)
 
         elif source == 'conditional':
             col_name = mapping['column']
