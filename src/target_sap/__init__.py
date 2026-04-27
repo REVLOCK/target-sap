@@ -1,3 +1,4 @@
+import glob
 import io
 import json
 import os
@@ -18,6 +19,30 @@ from target_sap.exceptions import MappingConfigError
 logger = singer.get_logger()
 
 
+def discover_input_files(input_dir):
+    """Scan for entity-specific JournalEntries-<entityId>.csv files.
+
+    Falls back to JournalEntries.csv if no entity files are found.
+    Returns a list of (file_path, entity_id) tuples where entity_id is
+    None for the fallback case.
+    """
+    pattern = os.path.join(input_dir, 'JournalEntries-*.csv')
+    entity_files = sorted(glob.glob(pattern))
+
+    if entity_files:
+        results = []
+        for fp in entity_files:
+            basename = os.path.basename(fp)
+            entity_id = basename[len('JournalEntries-'):-len('.csv')]
+            results.append((fp, entity_id))
+            logger.info(f"Discovered entity file: {basename} (entity={entity_id})")
+        return results
+
+    fallback = os.path.join(input_dir, 'JournalEntries.csv')
+    logger.info(f"No entity-specific files found, falling back to {fallback}")
+    return [(fallback, None)]
+
+
 def load_mapping_config(config_path):
     """Load field mapping configuration defining SAP journal entry transformations."""
     path = Path(config_path)
@@ -33,130 +58,196 @@ def load_mapping_config(config_path):
     return mapping['field_mappings']
 
 
-def apply_field_mapping(df, field_mappings, config):
+def _resolve_column(df, col_name, sap_field, numeric=False):
+    """Return column series or None if missing (with warning logged)."""
+    if col_name not in df.columns:
+        logger.warning(f"Column '{col_name}' not found for '{sap_field}' - using fallback")
+        return None
+    series = df[col_name]
+    if numeric:
+        return pd.to_numeric(series, errors='coerce').fillna(0)
+    return series
+
+
+def _parse_config_json(config, config_key, sap_field):
+    """Parse a config value as JSON, returning the parsed dict or None if empty."""
+    raw = config.get(config_key, '')
+    if not raw:
+        return None
+    try:
+        return json.loads(raw) if isinstance(raw, str) else raw
+    except (json.JSONDecodeError, TypeError) as e:
+        raise MappingConfigError(
+            f"Invalid JSON in config key '{config_key}' for '{sap_field}': {e}"
+        )
+
+
+def _handle_column(df, sap_field, mapping, config, entity_id):
+    """Read a CSV column with optional date formatting, value mapping, or config-driven mapping."""
+    col_name = mapping['column']
+    fallback_col = mapping.get('fallback_column')
+    empty = pd.Series('', index=df.index)
+
+    # Resolve primary column; fall back to fallback_column if missing
+    series = _resolve_column(df, col_name, sap_field)
+    if series is None:
+        if fallback_col:
+            fallback = _resolve_column(df, fallback_col, sap_field)
+            return fallback.fillna('') if fallback is not None else empty
+        return empty
+
+    if 'format' in mapping:
+        return pd.to_datetime(series).dt.strftime(mapping['format'])
+
+    # Value mapping: inline dict takes precedence, then config-driven
+    value_map = mapping.get('mapping')
+    if not value_map and 'mapping_config_key' in mapping:
+        config_key = mapping['mapping_config_key']
+        value_map = _parse_config_json(config, config_key, sap_field)
+        if value_map is None:
+            if fallback_col:
+                fallback = _resolve_column(df, fallback_col, sap_field)
+                if fallback is not None:
+                    logger.info(f"Config key '{config_key}' is empty for '{sap_field}', using fallback column '{fallback_col}'")
+                    return fallback.fillna('')
+            logger.info(f"Config key '{config_key}' is empty for '{sap_field}' - using empty string")
+            return empty
+
+    if value_map:
+        mapped = series.fillna('').map(value_map)
+        unmapped = mapped.isna()
+        if unmapped.any():
+            bad_values = series.loc[unmapped].unique().tolist()
+            logger.warning(f"Unmapped values for '{sap_field}': {bad_values}")
+        return mapped.fillna('')
+
+    return series.fillna('')
+
+
+def _handle_static(df, sap_field, mapping, config, entity_id):
+    """Set all rows to a hardcoded value."""
+    return pd.Series(mapping['value'], index=df.index)
+
+
+def _handle_config(df, sap_field, mapping, config, entity_id):
+    """Set all rows to a config value, with optional JSON lookup by entity_id."""
+    config_key = mapping['config_key']
+
+    if 'json_lookup' in mapping:
+        parsed = _parse_config_json(config, config_key, sap_field)
+        if parsed is None:
+            logger.info(f"Config key '{config_key}' is empty for '{sap_field}' - using empty string")
+            return pd.Series('', index=df.index)
+
+        lookup_key = mapping['json_lookup']
+        if lookup_key == 'entity_id':
+            if entity_id is None:
+                logger.info(f"No entity_id available for '{sap_field}' - using empty string")
+                return pd.Series('', index=df.index)
+            value = parsed.get(entity_id, '')
+            if value:
+                logger.info(f"Config lookup for '{sap_field}': entity '{entity_id}' -> '{value}'")
+            else:
+                logger.warning(f"Entity '{entity_id}' not found in '{config_key}' for '{sap_field}' - using empty string")
+            return pd.Series(value, index=df.index)
+
+        raise MappingConfigError(f"Unknown json_lookup key '{lookup_key}' for '{sap_field}'")
+
+    if config_key not in config:
+        raise MappingConfigError(
+            f"Config key '{config_key}' required by '{sap_field}' not found in config"
+        )
+    return pd.Series(config[config_key], index=df.index)
+
+
+def _handle_signed_amount(df, sap_field, mapping, config, entity_id):
+    """Numeric amount negated based on a sign column value."""
+    amount = _resolve_column(df, mapping['column'], sap_field, numeric=True)
+    sign = _resolve_column(df, mapping['sign_column'], sap_field)
+
+    if amount is None or sign is None:
+        return pd.Series('', index=df.index)
+
+    negate_when = mapping['negate_when']
+    return amount.where(
+        sign.str.strip().str.upper() != negate_when.upper(),
+        -amount
+    )
+
+
+def _handle_dual_column_amount(df, sap_field, mapping, config, entity_id):
+    """Pick from debit/credit columns; negate the specified side."""
+    debit = _resolve_column(df, mapping['debit_column'], sap_field, numeric=True)
+    credit = _resolve_column(df, mapping['credit_column'], sap_field, numeric=True)
+
+    if debit is None or credit is None:
+        return pd.Series('', index=df.index)
+
+    if mapping.get('negate', 'debit') == 'debit':
+        return credit.where(credit > 0, -debit)
+    return debit.where(debit > 0, -credit)
+
+
+def _handle_conditional(df, sap_field, mapping, config, entity_id):
+    """Include column value only when a condition column matches a value."""
+    value_series = _resolve_column(df, mapping['column'], sap_field)
+    cond_series = _resolve_column(df, mapping['condition_column'], sap_field)
+
+    if value_series is None or cond_series is None:
+        return pd.Series('', index=df.index)
+
+    return value_series.where(cond_series == mapping['condition_value'], '')
+
+
+def _handle_grouping(df, sap_field, mapping, config, entity_id):
+    """Assign sequential D1, D2, D3... group identifiers by a grouping column."""
+    group_col = mapping['group_by_column']
+    series = _resolve_column(df, group_col, sap_field)
+
+    if series is None:
+        logger.info(f"Applied fallback grouping for '{sap_field}': all {len(df)} entries assigned to D1")
+        return pd.Series('D1', index=df.index)
+
+    unique_groups = series.unique()
+    group_map = {group: f"D{i+1}" for i, group in enumerate(unique_groups)}
+    logger.info(f"Created grouping for '{sap_field}': {len(unique_groups)} unique groups")
+    return series.map(group_map)
+
+
+SOURCE_HANDLERS = {
+    'column': _handle_column,
+    'static': _handle_static,
+    'config': _handle_config,
+    'signed_amount': _handle_signed_amount,
+    'dual_column_amount': _handle_dual_column_amount,
+    'conditional': _handle_conditional,
+    'grouping': _handle_grouping,
+}
+
+
+def apply_field_mapping(df, field_mappings, config, entity_id=None):
     """Transform journal entry data into SAP-compliant format using configurable mappings."""
     result = pd.DataFrame()
 
     for sap_field, mapping in field_mappings.items():
         source = mapping.get('source')
-
-        if source == 'column':
-            col_name = mapping['column']
-            if col_name not in df.columns:
-                logger.warning(f"Source column '{col_name}' not found for SAP field '{sap_field}' - using empty string fallback")
-                result[sap_field] = ''  # Fallback to empty string for missing columns
-            else:
-                if 'format' in mapping:
-                    result[sap_field] = pd.to_datetime(df[col_name]).dt.strftime(mapping['format'])
-                else:
-                    result[sap_field] = df[col_name].fillna('')  # Replace NaN with empty string
-
-        elif source == 'static':
-            result[sap_field] = mapping['value']
-
-        elif source == 'config':
-            config_key = mapping['config_key']
-            if config_key not in config:
-                raise MappingConfigError(
-                    f"Config key '{config_key}' required by SAP field '{sap_field}' "
-                    f"not found in config"
-                )
-            result[sap_field] = config[config_key]
-
-        elif source == 'transform':
-            col_name = mapping['column']
-            if col_name not in df.columns:
-                logger.warning(f"Source column '{col_name}' not found for SAP field '{sap_field}' - using empty string fallback")
-                result[sap_field] = ''  # Fallback to empty string for missing columns
-            else:
-                value_map = mapping['mapping']
-                result[sap_field] = df[col_name].str.upper().map(value_map)
-                unmapped = result[sap_field].isna()
-                if unmapped.any():
-                    bad_values = df.loc[unmapped, col_name].unique().tolist()
-                    logger.warning(f"Unmapped values for '{sap_field}': {bad_values}")
-
-        elif source == 'signed_amount':
-            col_name = mapping['column']
-            sign_col = mapping['sign_column']
-            negate_when = mapping['negate_when']
-
-            missing_cols = [c for c in (col_name, sign_col) if c not in df.columns]
-            if missing_cols:
-                logger.warning(f"Source columns {missing_cols} not found for SAP field '{sap_field}' - using empty string fallback")
-                result[sap_field] = ''
-            else:
-                amount = pd.to_numeric(df[col_name], errors='coerce').fillna(0)
-                result[sap_field] = amount.where(
-                    df[sign_col].str.strip().str.upper() != negate_when.upper(),
-                    -amount
-                )
-
-        elif source == 'dual_column_amount':
-            debit_col = mapping['debit_column']
-            credit_col = mapping['credit_column']
-            negate = mapping.get('negate', 'debit')
-
-            missing_cols = [c for c in (debit_col, credit_col) if c not in df.columns]
-            if missing_cols:
-                logger.warning(f"Source columns {missing_cols} not found for SAP field '{sap_field}' - using empty string fallback")
-                result[sap_field] = ''
-            else:
-                debit = pd.to_numeric(df[debit_col], errors='coerce').fillna(0)
-                credit = pd.to_numeric(df[credit_col], errors='coerce').fillna(0)
-                if negate == 'debit':
-                    result[sap_field] = credit.where(credit > 0, -debit)
-                else:
-                    result[sap_field] = debit.where(debit > 0, -credit)
-
-        elif source == 'conditional':
-            col_name = mapping['column']
-            cond_col = mapping['condition_column']
-            cond_val = mapping['condition_value']
-            
-            missing_cols = [col for col in (col_name, cond_col) if col not in df.columns]
-            if missing_cols:
-                logger.warning(f"Source columns {missing_cols} not found for SAP field '{sap_field}' - using empty string fallback")
-                result[sap_field] = ''  # Fallback to empty string for missing columns
-            else:
-                result[sap_field] = df[col_name].where(df[cond_col] == cond_val, '')
-
-        elif source == 'grouping':
-            group_by_col = mapping['group_by_column']
-            if group_by_col not in df.columns:
-                logger.warning(f"Group by column '{group_by_col}' not found for SAP field '{sap_field}' - using single group D1 fallback")
-                # Fallback: Assign all entries to single group D1 when grouping column is missing
-                result[sap_field] = pd.Series(['D1'] * len(df), index=df.index)
-                logger.info(f"Applied fallback grouping for '{sap_field}': All {len(df)} entries assigned to group D1")
-            else:
-                # SAP Document Grouping Algorithm:
-                # Assigns sequential D1, D2, D3... identifiers to maintain document relationships
-                # Required for SAP audit trail - all entries with same Posting Group ID must
-                # share the same document group to ensure proper financial reconciliation
-                unique_groups = df[group_by_col].unique()
-                group_mapping = {group: f"D{i+1}" for i, group in enumerate(unique_groups)}
-                result[sap_field] = df[group_by_col].map(group_mapping)
-                
-                logger.info(f"Created grouping for '{sap_field}': {len(unique_groups)} unique groups mapped to {list(group_mapping.values())}")
-
-        else:
+        handler = SOURCE_HANDLERS.get(source)
+        if not handler:
             raise MappingConfigError(f"Unknown mapping source '{source}' for field '{sap_field}'")
+        result[sap_field] = handler(df, sap_field, mapping, config, entity_id)
 
     return result
 
 
-def transform_to_sap_xlsx(config, field_mappings):
-    """Load journal entries and transform to SAP-compliant XLSX format.
-    """
-    input_path = f"{config['input_path']}/JournalEntries.csv"
-
-    logger.info(f"Reading input CSV from {input_path}")
-    df = pd.read_csv(input_path)
+def transform_to_sap_xlsx(csv_path, field_mappings, config, entity_id=None):
+    """Load journal entries from a CSV file and transform to SAP-compliant XLSX format."""
+    logger.info(f"Reading input CSV from {csv_path}")
+    df = pd.read_csv(csv_path)
     logger.info(f"Loaded {len(df)} rows from input CSV")
 
     # Pre-validate all required columns to prevent SAP posting failures
     # SAP requires complete data sets - missing fields cause entire batch rejection
-    column_sources = ('column', 'transform', 'conditional', 'grouping')
+    column_sources = ('column', 'conditional', 'grouping')
     required_columns = set()
     for m in field_mappings.values():
         if m.get('source') in column_sources:
@@ -172,7 +263,7 @@ def transform_to_sap_xlsx(config, field_mappings):
         logger.warning(f"Input CSV is missing optional columns: {sorted(missing)} - will use fallback values")
         logger.info("Processing will continue with available columns and default values for missing data")
 
-    sap_df = apply_field_mapping(df, field_mappings, config)
+    sap_df = apply_field_mapping(df, field_mappings, config, entity_id=entity_id)
     logger.info(f"Transformed {len(sap_df)} rows into SAP XLSX format")
 
     return sap_df
@@ -194,14 +285,11 @@ def upload(config):
     field_mappings = load_mapping_config(mapping_path)
     logger.info(f"Loaded field mappings: {list(field_mappings.keys())}")
 
-    sap_df = transform_to_sap_xlsx(config, field_mappings)
+    input_files = discover_input_files(config['input_path'])
+    logger.info(f"Found {len(input_files)} file(s) to process")
 
-    # Generate XLSX binary for SAP consumption - xlsxwriter engine ensures 
-    # proper formatting and data type preservation required by SAP interfaces
-    xlsx_buffer = io.BytesIO()
-    sap_df.to_excel(xlsx_buffer, index=False, engine='xlsxwriter')
-    xlsx_content = xlsx_buffer.getvalue()
-    xlsx_buffer.close()
+    date_stamp = datetime.now().strftime('%m%d%Y')
+    remote_path = config['sftp_remote_path']
 
     sftp_client = get_client(
         host=config['sftp_host'],
@@ -210,13 +298,23 @@ def upload(config):
         password=config['sftp_password'],
     )
 
-    # Generate timestamp-based filename for unique file identification
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f'journal_entries_{timestamp}.xlsx'
-    remote_path = config['sftp_remote_path']
-
     with sftp_client:
-        sftp_client.upload_xlsx(xlsx_content, remote_path, filename)
+        for csv_path, entity_id in input_files:
+            logger.info(f"Processing file: {csv_path}")
+            sap_df = transform_to_sap_xlsx(csv_path, field_mappings, config, entity_id=entity_id)
+
+            xlsx_buffer = io.BytesIO()
+            sap_df.to_excel(xlsx_buffer, index=False, engine='xlsxwriter')
+            xlsx_content = xlsx_buffer.getvalue()
+            xlsx_buffer.close()
+
+            if entity_id:
+                filename = f'JournalEntries-{date_stamp}-{entity_id}.xlsx'
+            else:
+                filename = f'JournalEntries-{date_stamp}.xlsx'
+
+            sftp_client.upload_xlsx(xlsx_content, remote_path, filename)
+            logger.info(f"Uploaded {filename}")
 
     logger.info('Upload completed')
 

@@ -23,12 +23,12 @@
       "config_key": "document_type"
     },
     "DocumentHeaderText_BKTXT": {
-      "source": "static",
-      "value": ""
+      "source": "column",
+      "column": "Posting Group Id"
     },
     "Reference_XBLNR": {
-      "source": "static",
-      "value": ""
+      "source": "column",
+      "column": "Accounting Event Type"
     },
     "AccountCode": {
       "source": "column",
@@ -50,7 +50,9 @@
     },
     "TaxCode": {
       "source": "column",
-      "column": "Tax Code"
+      "column": "Product Id",
+      "mapping_config_key": "tax_code_mapping",
+      "fallback_column": "Tax Code"
     },
     "TaxAmountDC_WMWST": {
       "source": "dual_column_amount",
@@ -58,9 +60,10 @@
       "credit_column": "Credit Tax",
       "negate": "debit"
     },
-    "BusinessArea": {
-      "source": "static",
-      "value": ""
+    "Business Area": {
+      "source": "config",
+      "config_key": "business_area_mapping",
+      "json_lookup": "entity_id"
     },
     "ProfitCenter": {
       "source": "config",
