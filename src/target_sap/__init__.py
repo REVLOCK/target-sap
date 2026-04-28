@@ -28,6 +28,9 @@ def discover_input_files(input_dir):
     """
     pattern = os.path.join(input_dir, 'JournalEntries-*.csv')
     entity_files = sorted(glob.glob(pattern))
+    logger.info(f"Scanning input directory: {input_dir}")
+    logger.info(f"Files in directory: {os.listdir(input_dir)}")
+
 
     if entity_files:
         results = []
