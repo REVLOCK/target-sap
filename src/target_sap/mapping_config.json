@@ -50,7 +50,7 @@
     },
     "TaxCode": {
       "source": "column",
-      "column": "Product Id",
+      "column": "cf_revrec_product_type",
       "mapping_config_key": "tax_code_mapping",
       "fallback_column": "Tax Code"
     },
@@ -60,10 +60,10 @@
       "credit_column": "Credit Tax",
       "negate": "debit"
     },
-    "Business Area": {
-      "source": "config",
-      "config_key": "business_area_mapping",
-      "json_lookup": "entity_id"
+    "BusinessArea": {
+      "source": "column",
+      "column": "Business Entity Id",
+      "mapping_config_key": "business_area_mapping"
     },
     "ProfitCenter": {
       "source": "config",
@@ -71,7 +71,7 @@
     },
     "Text_SGTXT": {
       "source": "column",
-      "column": "Product Id"
+      "column": "cf_revrec_product_type"
     }
   }
 }

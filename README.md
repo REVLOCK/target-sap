@@ -1,59 +1,74 @@
-# target-sap
+# target-sap-sftp
 
-A [Singer](https://www.singer.io/) / [hotglue](https://hotglue.xyz)-style target that reads journal entry data from CSV, transforms it to SAP journal entry format with dynamic grouping logic, and uploads the result as XLSX to an SFTP server.
+A [Singer](https://www.singer.io/) / [hotglue](https://hotglue.xyz)-style target that reads journal entry data from CSV, transforms it to SAP journal entry format, and uploads the result as XLSX to an SFTP server.
 
 ## What it does
-1. Reads `JournalEntries.csv` from a configured `input_path`.
-2. Loads comprehensive field mappings from `mapping_config.json` (path configurable).
-3. Applies dynamic grouping logic that assigns D1, D2, D3... values based on unique Posting Group IDs.
-4. Builds SAP-compliant XLSX output with complete field mappings including company codes, account details, amounts, dates, and grouping identifiers.
-5. Uploads the XLSX file to the remote path on SFTP using password authentication.
+
+1. Scans `input_path` for entity-specific CSV files (`JournalEntries-<entityId>.csv`). Falls back to `JournalEntries.csv` if none found.
+2. Loads field mappings from `mapping_config.json` (bundled with the package).
+3. Transforms each CSV into SAP-compliant XLSX using a registry-based mapping engine.
+4. Uploads each file to SFTP as `JournalEntries-MMDDYYYY-<entityId>.xlsx`.
+
 ## Requirements
+
 - Python 3.7+
+
 ## Install
-From the repository root:
+
 ```bash
 pip install -e .
 ```
-This installs the console script `target-sap`.
+
+This installs the console script `target-sap-sftp`.
+
+## Run
+
+```bash
+target-sap-sftp --config config.json
+```
+
 ## Configuration
-Create a JSON config file (see `sample_config.json`). The following keys are **required**:
+
+Create a JSON config file (see `sample_config.json`).
+
+### Required keys
+
 | Key | Description |
 | --- | --- |
 | `sftp_host` | SFTP server hostname |
 | `sftp_username` | SFTP user |
 | `sftp_password` | Password for SFTP authentication |
-| `sftp_remote_path` | Remote directory where the output file is written (created if missing) |
-| `input_path` | Local directory containing `JournalEntries.csv` |
-Optional keys:
+| `sftp_remote_path` | Remote directory where output files are written (created if missing) |
+| `input_path` | Local directory containing input CSV files |
+
+### Optional keys
+
 | Key | Default | Description |
 | --- | --- | --- |
 | `sftp_port` | `22` | SFTP port |
 
-SAP field values (used by `source: "config"` mappings):
+### SAP field values
 
-| Key | SAP Field | Description |
+These are used by `source: "config"` mappings and applied to every row:
+
+| Key | SAP Field | Example |
 | --- | --- | --- |
-| `company_code` | Company Code (BUKRS) | SAP company code posted on every journal line (e.g. `CZ12`) |
-| `document_type` | Document Type (BLART) | SAP document type (e.g. `FC` for journal entries) |
-| `account_type` | Account Type (Koart) | SAP account type indicator (e.g. `S` for G/L account) |
-| `profit_center` | Profit Center | SAP profit center assigned to every line (e.g. `1007`) |
+| `company_code` | CompanyCode (BUKRS) | `"CZ12"` |
+| `document_type` | DocumentType (BLART) | `"FC"` |
+| `account_type` | AccountType (Koart) | `"S"` |
+| `profit_center` | ProfitCenter | `"1007"` |
 
-## Dynamic Grouping Logic
-The system implements dynamic grouping that assigns D1, D2, D3... values based on unique Posting Group IDs:
-- Each unique Posting Group ID gets assigned a sequential D value (D1, D2, D3, etc.)
-- All journal entries with the same Posting Group ID receive the same D value
-- This ensures proper grouping of related journal entries in SAP
+### Config-driven lookup keys
 
-## Automatic File Naming
-The system automatically generates unique output filenames with timestamps to prevent file overwrites:
-- **Format**: `journal_entries_YYYYMMDD_HHMMSS.xlsx`
-- **Example**: `journal_entries_20240423_143022.xlsx`
-- **Benefits**: Multiple uploads per day without conflicts, clear upload timing identification
+These are optional JSON strings used for dynamic per-row or per-entity mappings:
 
-The mapping configuration is fixed to `./mapping_config.json` to ensure consistency across deployments.
+| Key | Description | Example |
+| --- | --- | --- |
+| `tax_code_mapping` | JSON mapping Product Id to tax codes. Falls back to the CSV `Tax Code` column when empty. | `"{\"product_a\": \"V1\"}"` |
+| `business_area_mapping` | JSON mapping entity IDs to business area codes. Empty string when no entity match. | `"{\"teya-cz\": \"BA01\"}"` |
 
 ### Example `config.json`
+
 ```json
 {
   "sftp_host": "sap-server.example.com",
@@ -65,68 +80,162 @@ The mapping configuration is fixed to `./mapping_config.json` to ensure consiste
   "company_code": "CZ12",
   "document_type": "FC",
   "account_type": "S",
-  "profit_center": "1007"
+  "profit_center": "1007",
+  "tax_code_mapping": "{\"product_a\": \"V1\", \"product_b\": \"V2\"}",
+  "business_area_mapping": "{\"teya-cz\": \"BA01\", \"teya-sk\": \"BA02\"}"
 }
 ```
-## Input CSV
-The target always reads:
-`<input_path>/JournalEntries.csv`
-Every column referenced in `mapping_config.json` with `source` `column`, `transform`, `conditional`, or `grouping` must exist in that file. The default mapping expects Chargebee RevRec journal entry columns:
-- `Transaction Date` - Used for posting and document dates
-- `Account Number` - SAP account code
-- `Amount` - Transaction amount in document currency
-- `Currency Code` - Document currency (USD, EUR, etc.)
-- `Account Name` - Account description
-- `Posting Group Id` - **Key field for grouping logic** - generates D1, D2, D3... values
-- `Posting Id` - Individual transaction identifier
-- `Customer Id` - Customer reference
-- `Product Id` - Product reference (mapped to Text_SGTXT)
-- `Actg Period` - Accounting period
-- `Accounting Event Type` - Type of accounting event (A/R, Revenue, Tax, etc.)
 
-Add or rename columns in the mapping file if your source file differs.
-## Field mapping (`mapping_config.json`)
-The file must contain a top-level `field_mappings` object. Each key is an **output column name**; the value describes how to fill it.
+## Input files
+
+### Multi-entity processing
+
+The target scans `input_path` for files matching `JournalEntries-<entityId>.csv`:
+
+```
+data/
+  JournalEntries-teya-cz.csv   ->  JournalEntries-04272026-teya-cz.xlsx
+  JournalEntries-teya-sk.csv   ->  JournalEntries-04272026-teya-sk.xlsx
+```
+
+If no entity-specific files are found, it falls back to `JournalEntries.csv` and outputs `JournalEntries-MMDDYYYY.xlsx`.
+
+The entity ID extracted from the filename is used by `config` mappings with `json_lookup: "entity_id"` (e.g., BusinessArea).
+
+### Expected CSV columns
+
+| Column | Used by |
+| --- | --- |
+| `Transaction Date` | PostingDate, DocumentDate (formatted as M/D/YYYY) |
+| `Account Number` | AccountCode |
+| `Amount` | AmountDC_WRBTR (negated when Type is Debit) |
+| `Type` | Sign column for AmountDC_WRBTR |
+| `Currency Code` | DocumentCurrency |
+| `Posting Group Id` | Grouping (D1, D2, ...) and DocumentHeaderText |
+| `Accounting Event Type` | Reference_XBLNR |
+| `Product Id` | Text_SGTXT and TaxCode lookup key |
+| `Tax Code` | TaxCode fallback column |
+| `Debit Tax` | TaxAmountDC_WMWST (negated) |
+| `Credit Tax` | TaxAmountDC_WMWST (positive) |
+
+Missing columns are handled gracefully with warnings and empty string fallbacks.
+
+## Field mapping engine (`mapping_config.json`)
+
+The mapping file contains a top-level `field_mappings` object. Each key is an output column name; the value describes how to populate it. The engine uses a handler registry -- each source type is a separate function, making it easy to extend.
+
 ### `source: "column"`
-Copy from an input column. Optional `format` uses [strftime](https://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior) after parsing with pandas (e.g. `"%Y%m%d"` for `YYYYMMDD`).
+
+Read a CSV column. Supports optional modifiers that can be combined:
+
+**Basic column copy:**
+
 ```json
-"PostingDate": {
+"AccountCode": {
+  "source": "column",
+  "column": "Account Number"
+}
+```
+
+**With date formatting** (`format` -- strftime syntax):
+
+```json
+"PostingDate_BUDAT": {
   "source": "column",
   "column": "Transaction Date",
-  "format": "%Y%m%d"
+  "format": "%-m/%-d/%Y"
 }
 ```
-### `source: "static"`
-Same value for every row.
-```json
-"CompanyCode": {
-  "source": "static",
-  "value": "1000"
-}
-```
-### `source: "transform"`
-Map normalized uppercase source values to output codes (e.g. debit/credit indicators).
+
+**With inline value mapping** (`mapping` -- replaces the old `transform` type):
+
 ```json
 "DebitCredit": {
-  "source": "transform",
-  "column": "Posting Type",
-  "mapping": {
-    "DEBIT": "H",
-    "CREDIT": "S"
-  }
+  "source": "column",
+  "column": "Type",
+  "mapping": { "DEBIT": "H", "CREDIT": "S" }
 }
 ```
-Unmapped values produce `NaN` in the output and a warning in the log; extend `mapping` as needed.
+
+**With config-driven value mapping** (`mapping_config_key` -- replaces the old `config_key_lookup` type):
+
+```json
+"TaxCode": {
+  "source": "column",
+  "column": "Product Id",
+  "mapping_config_key": "tax_code_mapping",
+  "fallback_column": "Tax Code"
+}
+```
+
+When `mapping_config_key` is provided, the config value is parsed as JSON and used as the mapping dict. If the config key is empty/missing, `fallback_column` is read instead. If neither is available, empty string is used.
+
+### `source: "static"`
+
+Same value for every row.
+
+```json
+"DocumentHeaderText_BKTXT": {
+  "source": "static",
+  "value": ""
+}
+```
+
 ### `source: "config"`
-Read a value from the runtime config file. Every row gets the same value, but the value is user-configurable rather than hardcoded in the mapping.
+
+Read a value from the runtime config. Every row gets the same value.
+
 ```json
 "CompanyCode_BUKRS": {
   "source": "config",
   "config_key": "company_code"
 }
 ```
+
+**With JSON lookup** (`json_lookup` -- replaces the old `config_entity_lookup` type):
+
+```json
+"BusinessArea": {
+  "source": "config",
+  "config_key": "business_area_mapping",
+  "json_lookup": "entity_id"
+}
+```
+
+When `json_lookup: "entity_id"` is set, the config value is parsed as JSON and the current file's entity ID is used as the lookup key. If the entity ID is not found or the config is empty, empty string is used.
+
+### `source: "signed_amount"`
+
+Numeric amount from one column, negated when a sign column matches a specified value.
+
+```json
+"AmountDC_WRBTR": {
+  "source": "signed_amount",
+  "column": "Amount",
+  "sign_column": "Type",
+  "negate_when": "Debit"
+}
+```
+
+### `source: "dual_column_amount"`
+
+Pick from two columns (debit/credit); negate the specified side.
+
+```json
+"TaxAmountDC_WMWST": {
+  "source": "dual_column_amount",
+  "debit_column": "Debit Tax",
+  "credit_column": "Credit Tax",
+  "negate": "debit"
+}
+```
+
+If `Debit Tax > 0`, the value is negated. If `Credit Tax > 0`, it is used as-is.
+
 ### `source: "conditional"`
-Copy a column value only when a condition column matches a specified value; outputs empty string otherwise.
+
+Include a column value only when a condition column matches a specified value; empty string otherwise.
+
 ```json
 "TaxAmountLC_HWSTE": {
   "source": "conditional",
@@ -135,92 +244,81 @@ Copy a column value only when a condition column matches a specified value; outp
   "condition_value": "Tax"
 }
 ```
+
 ### `source: "grouping"`
-Assigns D1, D2, D3... values based on unique values in the specified column. All rows with the same value in the group_by_column get the same D identifier.
+
+Assigns sequential D1, D2, D3... identifiers based on unique values in the specified column.
+
 ```json
 "Grouping": {
   "source": "grouping",
   "group_by_column": "Posting Group Id"
 }
 ```
-This creates a sequential mapping where unique Posting Group IDs are assigned D1, D2, D3, etc., ensuring consistent grouping across related journal entries.
 
-## SAP Output Fields
-The current mapping configuration generates the following SAP journal entry fields:
+## SAP output fields
 
-| SAP Field | Description | Source Type | Notes |
-|-----------|-------------|-------------|-------|
-| `Grouping` | Document grouping (D1, D2, D3...) | grouping | Based on unique Posting Group IDs |
-| `CompanyCode_BUKRS` | Company Code | config | From company_code config (e.g., CZ12) |
-| `PostingDate_BUDAT` | Posting Date | column | Transaction Date in YYYYMMDD format |
-| `DocumentDate_BLDAT` | Document Date | column | Transaction Date in YYYYMMDD format |
-| `DocumentType_BLART` | Document Type | config | From document_type config (FC) |
-| `DocumentHeaderText_BKTXT` | Document Header Text | static | Empty (pending implementation) |
-| `Reference_XBLNR` | Reference | static | Empty (pending implementation) |
-| `AccountCode` | Account/Vendor/Customer Code | column | From Account Number |
-| `AccountType_Koart` | Account Type | config | From account_type config (S) |
-| `AmountDC_WRBTR` | Amount in Document Currency | column | From Amount |
-| `DocumentCurrency` | Document Currency | column | From Currency Code |
-| `TaxCode` | Tax Code | static | Empty (pending implementation) |
-| `TaxAmountDC_WMWST` | Tax Amount in Document Currency | static | Empty (pending implementation) |
-| `BusinessArea` | Business Area | static | Empty (pending implementation) |
-| `ProfitCenter` | Profit Center | config | From profit_center config (1007) |
-| `Text_SGTXT` | Line Item Text | column | From Product Id |
+The current `mapping_config.json` produces these output columns:
 
-### Pending Fields
-Fields marked as "pending implementation" are currently set to empty strings and can be configured later based on business requirements for:
-- Document header text rules
-- Reference number generation
-- Tax code mapping
-- Tax amount calculations
-- Business area assignment logic
+| SAP Field | Source | Details |
+| --- | --- | --- |
+| Grouping | grouping | Sequential D1, D2... by Posting Group Id |
+| CompanyCode_BUKRS | config | `company_code` |
+| PostingDate_BUDAT | column | Transaction Date as M/D/YYYY |
+| DocumentDate_BLDAT | column | Transaction Date as M/D/YYYY |
+| DocumentType_BLART | config | `document_type` |
+| DocumentHeaderText_BKTXT | column | Posting Group Id |
+| Reference_XBLNR | column | Accounting Event Type |
+| AccountCode | column | Account Number |
+| AccountType_Koart | config | `account_type` |
+| AmountDC_WRBTR | signed_amount | Amount, negated when Type is Debit |
+| DocumentCurrency | column | Currency Code |
+| TaxCode | column | Product Id mapped via `tax_code_mapping`, fallback to Tax Code column |
+| TaxAmountDC_WMWST | dual_column_amount | Debit Tax (negated) or Credit Tax |
+| BusinessArea | config | `business_area_mapping` looked up by entity ID |
+| ProfitCenter | config | `profit_center` |
+| Text_SGTXT | column | Product Id |
 
-## Run
-```bash
-target-sap --config config.json
+## Architecture
+
+### Handler registry
+
+The mapping engine uses a `SOURCE_HANDLERS` dictionary that maps source type names to handler functions. Each handler has the signature:
+
+```python
+def _handle_<type>(df, sap_field, mapping, config, entity_id) -> pd.Series
 ```
 
-### Example Output
-The system generates XLSX output with columns like:
-```
-Grouping | CompanyCode_BUKRS | PostingDate_BUDAT | DocumentDate_BLDAT | DocumentType_BLART | AccountCode | AccountType_Koart | AmountDC_WRBTR | DocumentCurrency | ProfitCenter | ...
-D1       | CZ12             | 20260327         | 20260327          | FC                | 10001      | S                | 113.67        | USD             | 1007        | ...
-D1       | CZ12             | 20260329         | 20260329          | FC                | 20000      | S                | 10.83         | USD             | 1007        | ...
-D2       | CZ12             | 20260328         | 20260328          | FC                | 30000      | S                | 10.00         | USD             | 1007        | ...
-```
+Adding a new source type requires writing one function and adding one entry to the registry dict. No changes to the main loop are needed.
 
-- All entries with the same Posting Group ID get the same `Grouping` value (D1, D2, etc.)
-- Static configuration values are applied consistently across all rows
-- Dates are formatted in SAP-compatible YYYYMMDD format
-- Empty fields for pending implementations are set to empty strings
+### Shared helpers
 
-## Validation & Testing
-The implementation includes comprehensive validation:
-- **Grouping Algorithm**: Verifies unique Posting Group IDs are correctly mapped to D1, D2, D3... sequence
-- **Field Mapping**: Validates all SAP fields are properly populated from source data or configuration
-- **Data Consistency**: Ensures rows with the same Posting Group ID always get the same grouping value
-- **Format Compliance**: Checks date formats (YYYYMMDD) and static value assignments
+- `_resolve_column(df, col_name, sap_field, numeric=False)` -- checks if a column exists, logs a warning if missing, optionally coerces to numeric.
+- `_parse_config_json(config, config_key, sap_field)` -- parses a config value as JSON with error handling.
 
-Example validation output:
+### Processing pipeline
+
 ```
-INFO Created grouping for 'Grouping': 62 unique groups mapped to ['D1', 'D2', 'D3', ..., 'D62']
-SUCCESS: All 62 unique groups correctly mapped to ['D1', 'D2', 'D3', ...]
+discover_input_files()
+  -> for each (csv_path, entity_id):
+       transform_to_sap_xlsx()
+         -> pd.read_csv()
+         -> apply_field_mapping()  # loops through SOURCE_HANDLERS
+       -> to_excel() as XLSX buffer
+       -> sftp_client.upload_xlsx()
 ```
 
 ## Project layout
-- `src/target_sap/__init__.py` — entry point, field mapping logic, XLSX generation, SFTP upload orchestration
-- `src/target_sap/client.py` — Paramiko SFTP client with password authentication
-- `src/target_sap/const.py` — required config keys and defaults
-- `src/target_sap/exceptions.py` — `SftpConnectionError`, `SftpUploadError`, `MappingConfigError`
-- `mapping_config.json` — complete SAP field mappings with grouping logic
-- `config.json` — runtime configuration with SFTP and SAP settings
-- `sample_config.json` — sample runtime config template
 
-### Key Features Implemented
-- **Dynamic Grouping**: Automatic D1, D2, D3... assignment based on unique Posting Group IDs
-- **Complete SAP Mapping**: All standard SAP journal entry fields supported
-- **XLSX Output**: Generates Excel format for SAP consumption
-- **Password Auth**: Secure SFTP authentication using username and password
-- **Flexible Configuration**: Config-driven field mappings and static values
+| Path | Description |
+| --- | --- |
+| `src/target_sap/__init__.py` | Entry point, mapping engine, XLSX generation, SFTP upload |
+| `src/target_sap/client.py` | Paramiko SFTP client with password authentication |
+| `src/target_sap/const.py` | Required config keys and defaults |
+| `src/target_sap/exceptions.py` | `SftpConnectionError`, `SftpUploadError`, `MappingConfigError` |
+| `src/target_sap/mapping_config.json` | SAP field mapping definitions |
+| `sample_config.json` | Example runtime config |
+
 ## License
-See `LICENSE` in the repository (GNU Affero General Public License v3 per `setup.cfg`).
+
+GNU Affero General Public License v3 (see `LICENSE`).
