@@ -41,12 +41,12 @@
     "Amount DC WRBTR": {
       "source": "signed_amount",
       "column": "Amount",
-      "sign_column": "Type",
+      "sign_column": "Posting Type",
       "negate_when": "Debit"
     },
     "Document Currency": {
       "source": "column",
-      "column": "Currency Code"
+      "column": "Currency"
     },
     "Tax Code": {
       "source": "column",
