@@ -4,72 +4,71 @@
       "source": "grouping",
       "group_by_column": "Posting Group Id"
     },
-    "CompanyCode_BUKRS": {
+    "Company Code BUKRS": {
       "source": "config",
       "config_key": "company_code"
     },
-    "PostingDate_BUDAT": {
+    "Posting Date BUDAT": {
       "source": "column",
       "column": "Transaction Date",
       "format": "%-m/%-d/%Y"
     },
-    "DocumentDate_BLDAT": {
+    "Document Date BLDAT": {
       "source": "column",
       "column": "Transaction Date",
       "format": "%-m/%-d/%Y"
     },
-    "DocumentType_BLART": {
+    "Document Type BLART": {
       "source": "config",
       "config_key": "document_type"
     },
-    "DocumentHeaderText_BKTXT": {
+    "Document Header Text BKTXT": {
       "source": "column",
       "column": "Posting Group Id"
     },
-    "Reference_XBLNR": {
+    "Reference XBLNR": {
       "source": "column",
       "column": "Accounting Event Type"
     },
-    "AccountCode": {
+    "Account Code": {
       "source": "column",
       "column": "Account Number"
     },
-    "AccountType_Koart": {
+    "Account Type Koart": {
       "source": "config",
       "config_key": "account_type"
     },
-    "AmountDC_WRBTR": {
+    "Amount DC WRBTR": {
       "source": "signed_amount",
       "column": "Amount",
       "sign_column": "Type",
       "negate_when": "Debit"
     },
-    "DocumentCurrency": {
+    "Document Currency": {
       "source": "column",
       "column": "Currency Code"
     },
-    "TaxCode": {
+    "Tax Code": {
       "source": "column",
       "column": "cf_revrec_product_type",
-      "mapping_config_key": "tax_code_mapping",
-      "fallback_column": "Tax Code"
+      "mapping_config_key": "tax_code_mapping"
     },
-    "TaxAmountDC_WMWST": {
+    "Tax Amount DC WMWST": {
       "source": "dual_column_amount",
       "debit_column": "Debit Tax",
       "credit_column": "Credit Tax",
       "negate": "debit"
     },
-    "BusinessArea": {
+    "Business Area": {
       "source": "column",
       "column": "Business Entity Id",
       "mapping_config_key": "business_area_mapping"
     },
-    "ProfitCenter": {
+    "Profit Center": {
       "source": "config",
       "config_key": "profit_center"
     },
-    "Text_SGTXT": {
+    "Text SGTXT": {
       "source": "column",
       "column": "cf_revrec_product_type"
     }
