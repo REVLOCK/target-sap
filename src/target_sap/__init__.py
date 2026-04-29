@@ -22,7 +22,9 @@ logger = singer.get_logger()
 def discover_input_files(input_dir):
     """Scan for entity-specific JournalEntries-<entityId>.csv files.
 
-    Falls back to JournalEntries.csv if no entity files are found.
+    Skips files with 'default' as entity ID (JournalEntries-default.*).
+    Falls back to JournalEntries.csv first, then JournalEntries-default.csv 
+    if no entity files are found.
     Returns a list of (file_path, entity_id) tuples where entity_id is
     None for the fallback case.
     """
@@ -37,13 +39,34 @@ def discover_input_files(input_dir):
         for fp in entity_files:
             basename = os.path.basename(fp)
             entity_id = basename[len('JournalEntries-'):-len('.csv')]
+            if entity_id == 'default':
+                logger.info(f"Skipping default file: {basename}")
+                continue
+                
             results.append((fp, entity_id))
             logger.info(f"Discovered entity file: {basename} (entity={entity_id})")
-        return results
+        
+        if results:
+            return results
 
-    fallback = os.path.join(input_dir, 'JournalEntries.csv')
-    logger.info(f"No entity-specific files found, falling back to {fallback}")
-    return [(fallback, None)]
+    # Try fallback files in priority order
+    fallback_files = [
+        'JournalEntries.csv',
+        'JournalEntries-default.csv'
+    ]
+    
+    for fallback_file in fallback_files:
+        fallback_path = os.path.join(input_dir, fallback_file)
+        if os.path.exists(fallback_path):
+            logger.info(f"No entity-specific files found, falling back to {fallback_file}")
+            return [(fallback_path, None)]
+        else:
+            logger.info(f"Fallback file {fallback_file} not found")
+    
+    # If no fallback files exist, return the primary fallback anyway
+    primary_fallback = os.path.join(input_dir, 'JournalEntries.csv')
+    logger.warning(f"No fallback files found, returning {primary_fallback} (may not exist)")
+    return [(primary_fallback, None)]
 
 
 def load_mapping_config(config_path):
