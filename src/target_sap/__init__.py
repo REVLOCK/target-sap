@@ -283,10 +283,6 @@ def apply_field_mapping(df, field_mappings, config, entity_id=None):
         if not handler:
             raise MappingConfigError(f"Unknown mapping source '{source}' for field '{sap_field}'")
         result[sap_field] = handler(df, sap_field, mapping, config, entity_id)
-        
-        # TODO: Remove this detailed field mapping logging after testing
-        field_values = result[sap_field].tolist()
-        logger.info(f"Processed SAP field '{sap_field}' (source: {source}): {json.dumps(field_values[:5], default=str)} {'... (truncated)' if len(field_values) > 5 else ''}")
 
     return result
 
@@ -296,15 +292,6 @@ def transform_to_sap_xlsx(csv_path, field_mappings, config, entity_id=None):
     logger.info(f"Reading input CSV from {csv_path}")
     df = pd.read_csv(csv_path)
     logger.info(f"Loaded {len(df)} rows from input CSV")
-    
-    # TODO: Remove this detailed input logging after testing
-    logger.info(f"Input CSV columns: {list(df.columns)}")
-    for idx, row in df.iterrows():
-        input_row_data = {col: row[col] for col in df.columns}
-        logger.info(f"Input row {idx} data: {json.dumps(input_row_data, default=str)}")
-        if idx >= 4:  # Log only first 5 rows to avoid spam
-            logger.info(f"... (logging limited to first 5 rows, total {len(df)} rows)")
-            break
 
     # Pre-validate all required columns to prevent SAP posting failures
     # SAP requires complete data sets - missing fields cause entire batch rejection
