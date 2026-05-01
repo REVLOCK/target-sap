@@ -240,6 +240,27 @@ def _handle_grouping(df, sap_field, mapping, config, entity_id):
     return series.map(group_map)
 
 
+def _handle_parse_middle(df, sap_field, mapping, config, entity_id):
+    """Extract middle part from a space-separated string (e.g., '202601 A/R teya-cz' → 'A/R')."""
+    series = _resolve_column(df, mapping['column'], sap_field)
+    
+    if series is None:
+        return pd.Series('', index=df.index)
+    
+    def extract_middle_part(text):
+        if pd.isna(text) or text == '':
+            return ''
+        try:
+            parts = str(text).strip().split()
+            if len(parts) >= 2:
+                return parts[1]  # Return the middle part (index 1)
+            return ''  # Skip if can't parse
+        except Exception:
+            return ''
+    
+    return series.apply(extract_middle_part)
+
+
 SOURCE_HANDLERS = {
     'column': _handle_column,
     'static': _handle_static,
@@ -248,6 +269,7 @@ SOURCE_HANDLERS = {
     'dual_column_amount': _handle_dual_column_amount,
     'conditional': _handle_conditional,
     'grouping': _handle_grouping,
+    'parse_middle': _handle_parse_middle,
 }
 
 

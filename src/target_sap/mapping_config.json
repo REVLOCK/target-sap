@@ -2,7 +2,7 @@
   "field_mappings": {
     "Grouping": {
       "source": "grouping",
-      "group_by_column": "Posting Group Id"
+      "group_by_column": "Journal Entry Id"
     },
     "Company Code BUKRS": {
       "source": "config",
@@ -24,11 +24,11 @@
     },
     "Document Header Text BKTXT": {
       "source": "column",
-      "column": "Posting Group Id"
+      "column": "Journal Entry Id"
     },
     "Reference XBLNR": {
-      "source": "column",
-      "column": "Accounting Event Type"
+      "source": "parse_middle",
+      "column": "Description"
     },
     "Account Code": {
       "source": "column",
@@ -37,6 +37,14 @@
     "Account Type Koart": {
       "source": "config",
       "config_key": "account_type"
+    },
+    "Special G/L ind. Umskz": {
+      "source": "static",
+      "value": ""
+    },
+    "Amount in LC DMBTR": {
+      "source": "static",
+      "value": ""
     },
     "Amount DC WRBTR": {
       "source": "signed_amount",
@@ -53,6 +61,10 @@
       "column": "cf_revrec_product_type",
       "mapping_config_key": "tax_code_mapping"
     },
+    "Tax Amount in Local Currency HWSTE": {
+      "source": "static",
+      "value": ""
+    },
     "Tax Amount DC WMWST": {
       "source": "dual_column_amount",
       "debit_column": "Debit Tax",
@@ -64,13 +76,45 @@
       "column": "Business Entity Id",
       "mapping_config_key": "business_area_mapping"
     },
+    "Cost Center": {
+      "source": "static",
+      "value": ""
+    },
+    "Internal Order": {
+      "source": "static",
+      "value": ""
+    },
     "Profit Center": {
       "source": "config",
       "config_key": "profit_center"
     },
+    "Valeur Date": {
+      "source": "static",
+      "value": ""
+    },
     "Text SGTXT": {
       "source": "column",
       "column": "cf_revrec_product_type"
+    },
+    "Assignment ZUONR": {
+      "source": "static",
+      "value": ""
+    },
+    "Reference key 1 XREF1": {
+      "source": "static",
+      "value": ""
+    },
+    "Reference key 3 XREF3": {
+      "source": "static",
+      "value": ""
+    },
+    "Trading Partner": {
+      "source": "static",
+      "value": ""
+    },
+    "Period": {
+      "source": "static",
+      "value": ""
     }
   }
 }
