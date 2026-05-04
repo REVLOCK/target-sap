@@ -50,7 +50,9 @@
       "source": "abs_sum",
       "debit_column": "Debit Tax",
       "credit_column": "Credit Tax",
-      "sum_column": "Amount"
+      "sum_column": "Amount",
+      "sign_column": "Posting Type",
+      "negate_when": "Credit"
     },
     "Document Currency": {
       "source": "column",

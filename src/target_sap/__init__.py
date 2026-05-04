@@ -215,7 +215,7 @@ def _handle_dual_column_amount(df, sap_field, mapping, config, entity_id):
 
 
 def _handle_abs_sum(df, sap_field, mapping, config, entity_id):
-    """Sum of absolute values: abs(debit_col + credit_col) + abs(sum_column)."""
+    """Sum of absolute values with optional sign: abs(debit+credit) + abs(sum_column), negated by sign_column."""
     debit = _resolve_column(df, mapping['debit_column'], sap_field, numeric=True)
     credit = _resolve_column(df, mapping['credit_column'], sap_field, numeric=True)
     sum_col = _resolve_column(df, mapping['sum_column'], sap_field, numeric=True)
@@ -224,7 +224,18 @@ def _handle_abs_sum(df, sap_field, mapping, config, entity_id):
         return pd.Series('', index=df.index)
 
     tax_value = debit + credit
-    return tax_value.abs() + sum_col.abs()
+    result = tax_value.abs() + sum_col.abs()
+
+    if 'sign_column' in mapping and 'negate_when' in mapping:
+        sign = _resolve_column(df, mapping['sign_column'], sap_field)
+        if sign is not None:
+            negate_when = mapping['negate_when']
+            result = result.where(
+                sign.str.strip().str.upper() != negate_when.upper(),
+                -result
+            )
+
+    return result
 
 
 def _handle_conditional(df, sap_field, mapping, config, entity_id):
