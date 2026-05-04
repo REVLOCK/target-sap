@@ -214,6 +214,19 @@ def _handle_dual_column_amount(df, sap_field, mapping, config, entity_id):
     return debit.where(debit > 0, -credit)
 
 
+def _handle_abs_sum(df, sap_field, mapping, config, entity_id):
+    """Sum of absolute values: abs(debit_col + credit_col) + abs(sum_column)."""
+    debit = _resolve_column(df, mapping['debit_column'], sap_field, numeric=True)
+    credit = _resolve_column(df, mapping['credit_column'], sap_field, numeric=True)
+    sum_col = _resolve_column(df, mapping['sum_column'], sap_field, numeric=True)
+
+    if debit is None or credit is None or sum_col is None:
+        return pd.Series('', index=df.index)
+
+    tax_value = debit + credit
+    return tax_value.abs() + sum_col.abs()
+
+
 def _handle_conditional(df, sap_field, mapping, config, entity_id):
     """Include column value only when a condition column matches a value."""
     value_series = _resolve_column(df, mapping['column'], sap_field)
@@ -267,6 +280,7 @@ SOURCE_HANDLERS = {
     'config': _handle_config,
     'signed_amount': _handle_signed_amount,
     'dual_column_amount': _handle_dual_column_amount,
+    'abs_sum': _handle_abs_sum,
     'conditional': _handle_conditional,
     'grouping': _handle_grouping,
     'parse_middle': _handle_parse_middle,

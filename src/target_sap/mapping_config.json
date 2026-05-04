@@ -47,10 +47,10 @@
       "value": ""
     },
     "Amount DC WRBTR": {
-      "source": "signed_amount",
-      "column": "Amount",
-      "sign_column": "Posting Type",
-      "negate_when": "Credit"
+      "source": "abs_sum",
+      "debit_column": "Debit Tax",
+      "credit_column": "Credit Tax",
+      "sum_column": "Amount"
     },
     "Document Currency": {
       "source": "column",
