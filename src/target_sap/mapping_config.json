@@ -50,7 +50,7 @@
       "source": "signed_amount",
       "column": "Amount",
       "sign_column": "Posting Type",
-      "negate_when": "Debit"
+      "negate_when": "Credit"
     },
     "Document Currency": {
       "source": "column",
@@ -69,7 +69,7 @@
       "source": "dual_column_amount",
       "debit_column": "Debit Tax",
       "credit_column": "Credit Tax",
-      "negate": "debit"
+      "negate": "credit"
     },
     "Business Area": {
       "source": "column",
