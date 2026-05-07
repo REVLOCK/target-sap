@@ -11,12 +11,12 @@
     "Posting Date BUDAT": {
       "source": "column",
       "column": "Transaction Date",
-      "format": "%-m/%-d/%Y"
+      "format": "%d/%m/%Y"
     },
     "Document Date BLDAT": {
       "source": "column",
       "column": "Transaction Date",
-      "format": "%-m/%-d/%Y"
+      "format": "%d/%m/%Y"
     },
     "Document Type BLART": {
       "source": "config",
