@@ -1,0 +1,14 @@
+{
+  "sftp_host": "localhost",
+  "sftp_port": 2222,
+  "sftp_username": "testuser",
+  "sftp_password": "testpass",
+  "sftp_remote_path": "/upload/",
+  "input_path": "./data",
+  "company_code": "CZ12",
+  "document_type": "FF",
+  "account_type": "S",
+  "profit_center": "1007",
+  "tax_code_mapping": "{\"product_a\": \"V1\", \"product_b\": \"V2\"}",
+  "business_area_mapping": "{\"teya-cz\": \"BA01\", \"teya-sk\": \"BA02\"}"
+}

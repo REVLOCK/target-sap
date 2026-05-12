@@ -1,0 +1,67 @@
+{
+  "sftp_host": {
+    "label": "SFTP Host",
+    "description": "Hostname of the SFTP server",
+    "type": "text"
+  },
+  "sftp_port": {
+    "label": "SFTP Port",
+    "description": "Port of the SFTP server",
+    "type": "text"
+  },
+  "sftp_username": {
+    "label": "SFTP Username",
+    "description": "Username for SFTP authentication",
+    "type": "text"
+  },
+  "sftp_private_key": {
+    "label": "SFTP Private Key",
+    "description": "SSH private key content for SFTP authentication (including -----BEGIN and -----END markers)",
+    "type": "textarea"
+  },
+  "sftp_key_passphrase": {
+    "label": "SFTP Key Passphrase",
+    "description": "Optional passphrase for encrypted SSH private key",
+    "type": "password"
+  },
+  "sftp_remote_path": {
+    "label": "SFTP Remote Path",
+    "description": "Remote directory where the output file is uploaded",
+    "type": "text"
+  },
+  "input_path": {
+    "label": "Input Path",
+    "description": "Local directory containing JournalEntries.csv",
+    "type": "text"
+  },
+  "mapping_config_path": {
+    "label": "Mapping Config Path",
+    "description": "Path to the field mapping JSON file",
+    "type": "text"
+  },
+  "output_filename": {
+    "label": "Output Filename",
+    "description": "Name of the output CSV file uploaded to SFTP",
+    "type": "text"
+  },
+  "company_code": {
+    "label": "Company Code (BUKRS)",
+    "description": "SAP company code posted on every journal line",
+    "type": "text"
+  },
+  "document_type": {
+    "label": "Document Type (BLART)",
+    "description": "SAP document type (e.g. FF for invoice)",
+    "type": "text"
+  },
+  "account_type": {
+    "label": "Account Type (Koart)",
+    "description": "SAP account type indicator (e.g. S for G/L account)",
+    "type": "text"
+  },
+  "profit_center": {
+    "label": "Profit Center",
+    "description": "SAP profit center assigned to every journal line",
+    "type": "text"
+  }
+}

@@ -1,0 +1,15 @@
+{
+    "sftp_host": "localhost",
+    "sftp_port": 2222,
+    "sftp_username": "testuser",
+    "sftp_private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n[Your private key content here]\n-----END OPENSSH PRIVATE KEY-----",
+    "sftp_key_passphrase": "",
+    "sftp_remote_path": "/upload/",
+    "input_path": "./data",
+    "mapping_config_path": "./mapping_config.json",
+    "output_filename": "journal_entries.xlsx",
+    "company_code": "CZ12",
+    "document_type": "FC",
+    "account_type": "S",
+    "profit_center": "1007"
+  }
