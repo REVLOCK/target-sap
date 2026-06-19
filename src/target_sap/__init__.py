@@ -285,6 +285,15 @@ def _handle_parse_middle(df, sap_field, mapping, config, entity_id):
     return series.apply(extract_middle_part)
 
 
+def _handle_suffix(df, sap_field, mapping, config, entity_id):
+    """Extract the last N characters from a column value."""
+    series = _resolve_column(df, mapping['column'], sap_field)
+    if series is None:
+        return pd.Series('', index=df.index)
+    length = mapping.get('length', 6)
+    return series.fillna('').astype(str).str[-length:]
+
+
 SOURCE_HANDLERS = {
     'column': _handle_column,
     'static': _handle_static,
@@ -295,6 +304,7 @@ SOURCE_HANDLERS = {
     'conditional': _handle_conditional,
     'grouping': _handle_grouping,
     'parse_middle': _handle_parse_middle,
+    'suffix': _handle_suffix,
 }
 
 
