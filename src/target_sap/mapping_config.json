@@ -27,8 +27,9 @@
       "column": "Journal Entry Id"
     },
     "Reference XBLNR": {
-      "source": "parse_middle",
-      "column": "Description"
+      "source": "suffix",
+      "column": "Journal Entry Id",
+      "length": 6
     },
     "Account Code": {
       "source": "column",
