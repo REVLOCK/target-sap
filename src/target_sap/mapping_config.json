@@ -9,8 +9,7 @@
       "config_key": "company_code"
     },
     "Posting Date BUDAT": {
-      "source": "column",
-      "column": "Transaction Date",
+      "source": "runtime_date",
       "format": "%d/%m/%Y"
     },
     "Document Date BLDAT": {

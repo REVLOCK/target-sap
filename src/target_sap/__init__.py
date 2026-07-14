@@ -294,10 +294,18 @@ def _handle_suffix(df, sap_field, mapping, config, entity_id):
     return series.fillna('').astype(str).str[-length:]
 
 
+def _handle_runtime_date(df, sap_field, mapping, config, entity_id):
+    """Set all rows to the current date/time at job execution using specified format."""
+    fmt = mapping.get('format', '%d/%m/%Y')
+    current_date = datetime.now().strftime(fmt)
+    return pd.Series(current_date, index=df.index)
+
+
 SOURCE_HANDLERS = {
     'column': _handle_column,
     'static': _handle_static,
     'config': _handle_config,
+    'runtime_date': _handle_runtime_date,
     'signed_amount': _handle_signed_amount,
     'dual_column_amount': _handle_dual_column_amount,
     'abs_sum': _handle_abs_sum,
