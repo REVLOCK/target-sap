@@ -67,6 +67,29 @@ These are optional JSON strings used for dynamic per-row or per-entity mappings:
 | `tax_code_mapping` | JSON mapping Product Id to tax codes. Falls back to the CSV `Tax Code` column when empty. | `"{\"product_a\": \"V1\"}"` |
 | `business_area_mapping` | JSON mapping entity IDs to business area codes. Empty string when no entity match. | `"{\"teya-cz\": \"BA01\"}"` |
 
+### Custom fields
+
+The optional `custom_fields` key accepts an array of `{ "name": "...", "value": "..." }` objects. This allows passing behaviour-altering flags without adding new top-level config keys. The array and any individual field can be absent or null — all custom field handling is fully optional.
+
+#### `skip_tax_code_for_accounts`
+
+**Why it exists:** SAP requires that certain balance-sheet or clearing accounts (e.g., bank accounts, intercompany accounts) carry no tax code. Populating `TaxCode` for those accounts causes SAP to reject the posting. Rather than hard-coding account exclusions in the mapping config, this field lets you supply the list at runtime per-tenant without any code change.
+
+**How it works:** After all field mappings have been applied, a post-processing step reads this value, splits it on commas, and sets `Tax Code` to an empty string for every row whose `Account Code` matches one of the listed accounts. Rows for accounts that are not in the list are unaffected.
+
+| Field name | Value format | Example |
+| --- | --- | --- |
+| `skip_tax_code_for_accounts` | Comma-separated account codes | `"10100,20200,30300"` |
+
+```json
+"custom_fields": [
+  {
+    "name": "skip_tax_code_for_accounts",
+    "value": "10100,20200,30300"
+  }
+]
+```
+
 ### Example `config.json`
 
 ```json
@@ -82,7 +105,13 @@ These are optional JSON strings used for dynamic per-row or per-entity mappings:
   "account_type": "S",
   "profit_center": "1007",
   "tax_code_mapping": "{\"product_a\": \"V1\", \"product_b\": \"V2\"}",
-  "business_area_mapping": "{\"teya-cz\": \"BA01\", \"teya-sk\": \"BA02\"}"
+  "business_area_mapping": "{\"teya-cz\": \"BA01\", \"teya-sk\": \"BA02\"}",
+  "custom_fields": [
+    {
+      "name": "skip_tax_code_for_accounts",
+      "value": "10100,20200,30300"
+    }
+  ]
 }
 ```
 
@@ -295,6 +324,8 @@ Adding a new source type requires writing one function and adding one entry to t
 
 - `_resolve_column(df, col_name, sap_field, numeric=False)` -- checks if a column exists, logs a warning if missing, optionally coerces to numeric.
 - `_parse_config_json(config, config_key, sap_field)` -- parses a config value as JSON with error handling.
+- `_get_custom_field(config, field_name)` -- safely retrieves a named value from the `custom_fields` array; returns `None` if the array is absent or the field is not present.
+- `_apply_skip_tax_code(sap_df, config)` -- post-processing step that reads `skip_tax_code_for_accounts` via `_get_custom_field` and blanks `Tax Code` for any row whose `Account Code` is in the list.
 
 ### Processing pipeline
 
@@ -303,7 +334,8 @@ discover_input_files()
   -> for each (csv_path, entity_id):
        transform_to_sap_xlsx()
          -> pd.read_csv()
-         -> apply_field_mapping()  # loops through SOURCE_HANDLERS
+         -> apply_field_mapping()       # loops through SOURCE_HANDLERS
+         -> _apply_skip_tax_code()      # clears Tax Code for excluded accounts
        -> to_excel() as XLSX buffer
        -> sftp_client.upload_xlsx()
 ```
