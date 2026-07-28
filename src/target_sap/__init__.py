@@ -108,6 +108,30 @@ def _parse_config_json(config, config_key, sap_field):
         )
 
 
+def _get_custom_field(config, field_name):
+    """Return the value of a named entry from the config's custom_fields list, or None."""
+    custom_fields = config.get('custom_fields')
+    if not custom_fields:
+        return None
+    for field in custom_fields:
+        if field.get('name') == field_name:
+            return field.get('value')
+    return None
+
+
+def _apply_skip_tax_code(sap_df, config):
+    """Clear Tax Code for rows whose Account Code is in the skip_tax_code_for_accounts custom field."""
+    skip_value = _get_custom_field(config, 'skip_tax_code_for_accounts')
+    if not skip_value:
+        return sap_df
+    skip_accounts = [a.strip() for a in skip_value.split(',') if a.strip()]
+    if skip_accounts and 'Tax Code' in sap_df.columns and 'Account Code' in sap_df.columns:
+        mask = sap_df['Account Code'].isin(skip_accounts)
+        sap_df.loc[mask, 'Tax Code'] = ''
+        logger.info(f"Cleared Tax Code for {mask.sum()} rows matching skip accounts: {skip_accounts}")
+    return sap_df
+
+
 def _handle_column(df, sap_field, mapping, config, entity_id):
     """Read a CSV column with optional date formatting, value mapping, or config-driven mapping."""
     col_name = mapping['column']
@@ -355,6 +379,7 @@ def transform_to_sap_xlsx(csv_path, field_mappings, config, entity_id=None):
         logger.info("Processing will continue with available columns and default values for missing data")
 
     sap_df = apply_field_mapping(df, field_mappings, config, entity_id=entity_id)
+    sap_df = _apply_skip_tax_code(sap_df, config)
     logger.info(f"Transformed {len(sap_df)} rows into SAP XLSX format")
 
     return sap_df
