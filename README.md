@@ -90,6 +90,25 @@ The optional `custom_fields` key accepts an array of `{ "name": "...", "value": 
 ]
 ```
 
+#### `skip_tax_code_if_tax_amount_zero`
+
+**Why it exists:** SAP rejects postings that carry a tax code but have no actual tax amount. When a journal entry's `Tax Amount DC WMWST` is zero, the tax code should not be populated even if the product type mapping would normally assign one. This flag lets you enable that behaviour at runtime without changing the mapping config.
+
+**How it works:** After all field mappings have been applied (including the `skip_tax_code_for_accounts` step), a post-processing step checks this flag. If it is present and truthy, `Tax Code` is set to an empty string for every row whose `Tax Amount DC WMWST` is zero (absolute value). Rows with a non-zero tax amount are unaffected.
+
+| Field name | Value format | Example |
+| --- | --- | --- |
+| `skip_tax_code_if_tax_amount_zero` | Any non-empty truthy string enables the behaviour | `"true"` |
+
+```json
+"custom_fields": [
+  {
+    "name": "skip_tax_code_if_tax_amount_zero",
+    "value": "true"
+  }
+]
+```
+
 ### Example `config.json`
 
 ```json
@@ -326,6 +345,7 @@ Adding a new source type requires writing one function and adding one entry to t
 - `_parse_config_json(config, config_key, sap_field)` -- parses a config value as JSON with error handling.
 - `_get_custom_field(config, field_name)` -- safely retrieves a named value from the `custom_fields` array; returns `None` if the array is absent or the field is not present.
 - `_apply_skip_tax_code(sap_df, config)` -- post-processing step that reads `skip_tax_code_for_accounts` via `_get_custom_field` and blanks `Tax Code` for any row whose `Account Code` is in the list.
+- `_apply_skip_tax_code_if_zero(sap_df, config)` -- post-processing step that reads `skip_tax_code_if_tax_amount_zero` via `_get_custom_field` and blanks `Tax Code` for any row whose `Tax Amount DC WMWST` is zero.
 
 ### Processing pipeline
 
@@ -334,8 +354,9 @@ discover_input_files()
   -> for each (csv_path, entity_id):
        transform_to_sap_xlsx()
          -> pd.read_csv()
-         -> apply_field_mapping()       # loops through SOURCE_HANDLERS
-         -> _apply_skip_tax_code()      # clears Tax Code for excluded accounts
+         -> apply_field_mapping()          # loops through SOURCE_HANDLERS
+         -> _apply_skip_tax_code()         # clears Tax Code for excluded accounts
+         -> _apply_skip_tax_code_if_zero() # clears Tax Code when tax amount is zero
        -> to_excel() as XLSX buffer
        -> sftp_client.upload_xlsx()
 ```

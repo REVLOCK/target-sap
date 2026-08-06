@@ -132,6 +132,21 @@ def _apply_skip_tax_code(sap_df, config):
     return sap_df
 
 
+def _apply_skip_tax_code_if_zero(sap_df, config):
+    """Clear Tax Code for rows where the absolute tax amount is zero."""
+    flag = _get_custom_field(config, 'skip_tax_code_if_tax_amount_zero')
+    if not flag:
+        return sap_df
+    tax_col = 'Tax Amount DC WMWST'
+    if 'Tax Code' not in sap_df.columns or tax_col not in sap_df.columns:
+        return sap_df
+    tax_amount = pd.to_numeric(sap_df[tax_col], errors='coerce').fillna(0)
+    mask = tax_amount.abs() == 0
+    sap_df.loc[mask, 'Tax Code'] = ''
+    logger.info(f"Cleared Tax Code for {mask.sum()} rows where tax amount is zero")
+    return sap_df
+
+
 def _handle_column(df, sap_field, mapping, config, entity_id):
     """Read a CSV column with optional date formatting, value mapping, or config-driven mapping."""
     col_name = mapping['column']
@@ -380,6 +395,7 @@ def transform_to_sap_xlsx(csv_path, field_mappings, config, entity_id=None):
 
     sap_df = apply_field_mapping(df, field_mappings, config, entity_id=entity_id)
     sap_df = _apply_skip_tax_code(sap_df, config)
+    sap_df = _apply_skip_tax_code_if_zero(sap_df, config)
     logger.info(f"Transformed {len(sap_df)} rows into SAP XLSX format")
 
     return sap_df
