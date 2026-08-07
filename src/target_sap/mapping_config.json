@@ -5,8 +5,9 @@
       "group_by_column": "Journal Entry Id"
     },
     "Company Code BUKRS": {
-      "source": "config",
-      "config_key": "company_code"
+      "source": "column",
+      "column": "Business Entity Id",
+      "mapping_config_key": "company_code_mapping"
     },
     "Posting Date BUDAT": {
       "source": "runtime_date",

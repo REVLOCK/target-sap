@@ -53,7 +53,6 @@ These are used by `source: "config"` mappings and applied to every row:
 
 | Key | SAP Field | Example |
 | --- | --- | --- |
-| `company_code` | CompanyCode (BUKRS) | `"CZ12"` |
 | `document_type` | DocumentType (BLART) | `"FC"` |
 | `account_type` | AccountType (Koart) | `"S"` |
 | `profit_center` | ProfitCenter | `"1007"` |
@@ -64,6 +63,7 @@ These are optional JSON strings used for dynamic per-row or per-entity mappings:
 
 | Key | Description | Example |
 | --- | --- | --- |
+| `company_code_mapping` | JSON mapping `Business Entity Id` values to CompanyCode (BUKRS). Empty string when no entity match. | `"{\"teya-cz\": \"CZ12\"}"` |
 | `tax_code_mapping` | JSON mapping Product Id to tax codes. Falls back to the CSV `Tax Code` column when empty. | `"{\"product_a\": \"V1\"}"` |
 | `business_area_mapping` | JSON mapping entity IDs to business area codes. Empty string when no entity match. | `"{\"teya-cz\": \"BA01\"}"` |
 
@@ -119,10 +119,10 @@ The optional `custom_fields` key accepts an array of `{ "name": "...", "value": 
   "sftp_password": "your_password_here",
   "sftp_remote_path": "/incoming/journal_entries/",
   "input_path": "./data",
-  "company_code": "CZ12",
   "document_type": "FC",
   "account_type": "S",
   "profit_center": "1007",
+  "company_code_mapping": "{\"teya-cz\": \"CZ12\", \"teya-sk\": \"CZ12\"}",
   "tax_code_mapping": "{\"product_a\": \"V1\", \"product_b\": \"V2\"}",
   "business_area_mapping": "{\"teya-cz\": \"BA01\", \"teya-sk\": \"BA02\"}",
   "custom_fields": [
@@ -234,9 +234,9 @@ Same value for every row.
 Read a value from the runtime config. Every row gets the same value.
 
 ```json
-"CompanyCode_BUKRS": {
+"DocumentType_BLART": {
   "source": "config",
-  "config_key": "company_code"
+  "config_key": "document_type"
 }
 ```
 
