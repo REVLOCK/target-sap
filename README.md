@@ -53,7 +53,6 @@ These are used by `source: "config"` mappings and applied to every row:
 
 | Key | SAP Field | Example |
 | --- | --- | --- |
-| `company_code` | CompanyCode (BUKRS) | `"CZ12"` |
 | `document_type` | DocumentType (BLART) | `"FC"` |
 | `account_type` | AccountType (Koart) | `"S"` |
 | `profit_center` | ProfitCenter | `"1007"` |
@@ -64,6 +63,7 @@ These are optional JSON strings used for dynamic per-row or per-entity mappings:
 
 | Key | Description | Example |
 | --- | --- | --- |
+| `company_code_mapping` | JSON mapping `Business Entity Id` values to CompanyCode (BUKRS). Empty string when no entity match. | `"{\"teya-cz\": \"CZ12\"}"` |
 | `tax_code_mapping` | JSON mapping Product Id to tax codes. Falls back to the CSV `Tax Code` column when empty. | `"{\"product_a\": \"V1\"}"` |
 | `business_area_mapping` | JSON mapping entity IDs to business area codes. Empty string when no entity match. | `"{\"teya-cz\": \"BA01\"}"` |
 
@@ -90,6 +90,25 @@ The optional `custom_fields` key accepts an array of `{ "name": "...", "value": 
 ]
 ```
 
+#### `skip_tax_code_if_tax_amount_zero`
+
+**Why it exists:** SAP rejects postings that carry a tax code but have no actual tax amount. When a journal entry's `Tax Amount DC WMWST` is zero, the tax code should not be populated even if the product type mapping would normally assign one. This flag lets you enable that behaviour at runtime without changing the mapping config.
+
+**How it works:** After all field mappings have been applied (including the `skip_tax_code_for_accounts` step), a post-processing step checks this flag. If it is present and truthy, `Tax Code` is set to an empty string for every row whose `Tax Amount DC WMWST` is zero (absolute value). Rows with a non-zero tax amount are unaffected.
+
+| Field name | Value format | Example |
+| --- | --- | --- |
+| `skip_tax_code_if_tax_amount_zero` | Any non-empty truthy string enables the behaviour | `"true"` |
+
+```json
+"custom_fields": [
+  {
+    "name": "skip_tax_code_if_tax_amount_zero",
+    "value": "true"
+  }
+]
+```
+
 ### Example `config.json`
 
 ```json
@@ -100,10 +119,10 @@ The optional `custom_fields` key accepts an array of `{ "name": "...", "value": 
   "sftp_password": "your_password_here",
   "sftp_remote_path": "/incoming/journal_entries/",
   "input_path": "./data",
-  "company_code": "CZ12",
   "document_type": "FC",
   "account_type": "S",
   "profit_center": "1007",
+  "company_code_mapping": "{\"teya-cz\": \"CZ12\", \"teya-sk\": \"CZ12\"}",
   "tax_code_mapping": "{\"product_a\": \"V1\", \"product_b\": \"V2\"}",
   "business_area_mapping": "{\"teya-cz\": \"BA01\", \"teya-sk\": \"BA02\"}",
   "custom_fields": [
@@ -215,9 +234,9 @@ Same value for every row.
 Read a value from the runtime config. Every row gets the same value.
 
 ```json
-"CompanyCode_BUKRS": {
+"DocumentType_BLART": {
   "source": "config",
-  "config_key": "company_code"
+  "config_key": "document_type"
 }
 ```
 
@@ -326,6 +345,7 @@ Adding a new source type requires writing one function and adding one entry to t
 - `_parse_config_json(config, config_key, sap_field)` -- parses a config value as JSON with error handling.
 - `_get_custom_field(config, field_name)` -- safely retrieves a named value from the `custom_fields` array; returns `None` if the array is absent or the field is not present.
 - `_apply_skip_tax_code(sap_df, config)` -- post-processing step that reads `skip_tax_code_for_accounts` via `_get_custom_field` and blanks `Tax Code` for any row whose `Account Code` is in the list.
+- `_apply_skip_tax_code_if_zero(sap_df, config)` -- post-processing step that reads `skip_tax_code_if_tax_amount_zero` via `_get_custom_field` and blanks `Tax Code` for any row whose `Tax Amount DC WMWST` is zero.
 
 ### Processing pipeline
 
@@ -334,8 +354,9 @@ discover_input_files()
   -> for each (csv_path, entity_id):
        transform_to_sap_xlsx()
          -> pd.read_csv()
-         -> apply_field_mapping()       # loops through SOURCE_HANDLERS
-         -> _apply_skip_tax_code()      # clears Tax Code for excluded accounts
+         -> apply_field_mapping()          # loops through SOURCE_HANDLERS
+         -> _apply_skip_tax_code()         # clears Tax Code for excluded accounts
+         -> _apply_skip_tax_code_if_zero() # clears Tax Code when tax amount is zero
        -> to_excel() as XLSX buffer
        -> sftp_client.upload_xlsx()
 ```
