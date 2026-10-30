@@ -10,7 +10,9 @@
       "mapping_config_key": "company_code_mapping"
     },
     "Posting Date BUDAT": {
-      "source": "runtime_date",
+      "source": "conditional_posting_date",
+      "transaction_date_column": "Transaction Date",
+      "event_type_column": "Accounting Event Type",
       "format": "%d/%m/%Y"
     },
     "Document Date BLDAT": {
