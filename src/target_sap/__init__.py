@@ -3,6 +3,7 @@ import io
 import json
 import os
 import socket
+from calendar import monthrange
 from datetime import datetime
 from pathlib import Path
 
@@ -147,6 +148,42 @@ def _apply_skip_tax_code_if_zero(sap_df, config):
     return sap_df
 
 
+_TRANSACTION_DATE_FORMATS = (
+    '%Y-%m-%d',
+    '%Y-%m-%d %H:%M:%S',
+    '%Y-%m-%dT%H:%M:%S',
+    '%d/%m/%Y',
+    '%d-%m-%Y',
+    '%d.%m.%Y',
+)
+
+
+def _parse_transaction_dates(series, sap_field):
+    """Parse dates as ISO or day-first values, without inferring a column format.
+
+    Raises MappingConfigError when any value is blank or matches none of the
+    accepted formats, so a posting or document date is never written blank.
+    """
+    raw = series.fillna('').astype(str).str.strip()
+    parsed = pd.Series(pd.NaT, index=series.index)
+    remaining = raw.ne('')
+    for fmt in _TRANSACTION_DATE_FORMATS:
+        if not remaining.any():
+            break
+        attempt = pd.to_datetime(raw.where(remaining), format=fmt, errors='coerce')
+        matched = remaining & attempt.notna()
+        parsed = parsed.mask(matched, attempt)
+        remaining = remaining & ~matched
+
+    invalid = parsed.isna()
+    if invalid.any():
+        bad_values = raw.loc[invalid].unique().tolist()
+        raise MappingConfigError(
+            f"Unparseable or blank dates for '{sap_field}': {bad_values}"
+        )
+    return parsed
+
+
 def _handle_column(df, sap_field, mapping, config, entity_id):
     """Read a CSV column with optional date formatting, value mapping, or config-driven mapping."""
     col_name = mapping['column']
@@ -162,7 +199,8 @@ def _handle_column(df, sap_field, mapping, config, entity_id):
         return empty
 
     if 'format' in mapping:
-        return pd.to_datetime(series).dt.strftime(mapping['format'])
+        parsed = _parse_transaction_dates(series, sap_field)
+        return parsed.dt.strftime(mapping['format'])
 
     # Value mapping: inline dict takes precedence, then config-driven
     value_map = mapping.get('mapping')
@@ -340,11 +378,47 @@ def _handle_runtime_date(df, sap_field, mapping, config, entity_id):
     return pd.Series(current_date, index=df.index)
 
 
+def _last_day_of_current_month(today):
+    """Return the last calendar day of the month containing today."""
+    last_day = monthrange(today.year, today.month)[1]
+    return today.replace(day=last_day)
+
+
+def _handle_conditional_posting_date(df, sap_field, mapping, config, entity_id):
+    """Set posting date from event type and transaction date.
+
+    Revenue lines, and non-revenue lines dated today or yesterday, use the
+    transaction date. Every other non-revenue line uses the last day of the
+    current month. Document date is mapped separately from Transaction Date.
+    """
+    fmt = mapping.get('format', '%d/%m/%Y')
+    txn_col = mapping['transaction_date_column']
+    event_col = mapping['event_type_column']
+    missing = [col for col in (txn_col, event_col) if col not in df.columns]
+    if missing:
+        raise MappingConfigError(f"'{sap_field}' requires columns {missing}")
+
+    txn = _parse_transaction_dates(df[txn_col], sap_field)
+    event_series = df[event_col]
+    today = pd.Timestamp(datetime.now().date())
+    yesterday = today - pd.Timedelta(days=1)
+    month_end = _last_day_of_current_month(today)
+
+    is_revenue = (
+        event_series.fillna('').astype(str).str.strip().str.lower() == 'revenue'
+    )
+    txn_day = txn.dt.normalize()
+    is_recent = txn_day.eq(today) | txn_day.eq(yesterday)
+    posting = txn.where(is_revenue | is_recent, month_end)
+    return posting.dt.strftime(fmt)
+
+
 SOURCE_HANDLERS = {
     'column': _handle_column,
     'static': _handle_static,
     'config': _handle_config,
     'runtime_date': _handle_runtime_date,
+    'conditional_posting_date': _handle_conditional_posting_date,
     'signed_amount': _handle_signed_amount,
     'dual_column_amount': _handle_dual_column_amount,
     'abs_sum': _handle_abs_sum,
@@ -379,6 +453,7 @@ def transform_to_sap_xlsx(csv_path, field_mappings, config, entity_id=None):
     # SAP requires complete data sets - missing fields cause entire batch rejection
     column_sources = ('column', 'conditional', 'grouping')
     required_columns = set()
+    posting_columns = set()
     for m in field_mappings.values():
         if m.get('source') in column_sources:
             if 'column' in m:
@@ -387,8 +462,19 @@ def transform_to_sap_xlsx(csv_path, field_mappings, config, entity_id=None):
                 required_columns.add(m['group_by_column'])
         if m.get('source') == 'conditional' and 'condition_column' in m:
             required_columns.add(m['condition_column'])
+        if m.get('source') == 'conditional_posting_date':
+            for key in ('transaction_date_column', 'event_type_column'):
+                if key in m:
+                    posting_columns.add(m[key])
 
-    missing = required_columns - set(df.columns)
+    missing_posting = posting_columns - set(df.columns)
+    if missing_posting:
+        raise MappingConfigError(
+            'Input CSV is missing columns required for posting date: '
+            f'{sorted(missing_posting)}'
+        )
+
+    missing = (required_columns - posting_columns) - set(df.columns)
     if missing:
         logger.warning(f"Input CSV is missing optional columns: {sorted(missing)} - will use fallback values")
         logger.info("Processing will continue with available columns and default values for missing data")
