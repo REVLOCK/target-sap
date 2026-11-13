@@ -109,6 +109,34 @@ The optional `custom_fields` key accepts an array of `{ "name": "...", "value": 
 ]
 ```
 
+#### `revenue_account_numbers`
+
+**Why it exists:** Posting date no longer depends on `Accounting Event Type`. Revenue lines are the journal lines whose `Account Number` is in this list. When the list is not supplied, every posting date stays equal to the transaction date.
+
+**How it works:** `Posting Date BUDAT` reads this custom field. Document Date is still the transaction date in every case.
+
+| `revenue_account_numbers` | Row `Account Number` | Transaction date | Posting Date |
+| --- | --- | --- | --- |
+| Missing, null, or blank | Any | Any | Transaction date |
+| Set | In the list | Any | Transaction date |
+| Set | Not in the list, or blank | Strictly before yesterday | Last day of the current month |
+| Set | Not in the list, or blank | Today, yesterday, or later | Transaction date |
+
+An empty list (`[]`) is set, so no account matches and the month-end rule applies. Yesterday is `today - 1 day`. Month end is the last calendar day of the month the job runs in.
+
+| Field name | Value format | Example |
+| --- | --- | --- |
+| `revenue_account_numbers` | Comma-separated account numbers, a JSON array string, or a list | `"400100,400200"` |
+
+```json
+"custom_fields": [
+  {
+    "name": "revenue_account_numbers",
+    "value": "400100,400200"
+  }
+]
+```
+
 ### Example `config.json`
 
 ```json
@@ -155,7 +183,7 @@ The entity ID extracted from the filename is used by `config` mappings with `jso
 | Column | Used by |
 | --- | --- |
 | `Transaction Date` | PostingDate, DocumentDate (formatted as M/D/YYYY) |
-| `Account Number` | AccountCode |
+| `Account Number` | Account Code; posting date when `revenue_account_numbers` is set |
 | `Amount` | AmountDC_WRBTR (negated when Type is Debit) |
 | `Type` | Sign column for AmountDC_WRBTR |
 | `Currency Code` | DocumentCurrency |
@@ -344,6 +372,7 @@ Adding a new source type requires writing one function and adding one entry to t
 - `_resolve_column(df, col_name, sap_field, numeric=False)` -- checks if a column exists, logs a warning if missing, optionally coerces to numeric.
 - `_parse_config_json(config, config_key, sap_field)` -- parses a config value as JSON with error handling.
 - `_get_custom_field(config, field_name)` -- safely retrieves a named value from the `custom_fields` array; returns `None` if the array is absent or the field is not present.
+- `_parse_revenue_account_numbers(value)` -- parses `revenue_account_numbers` from a list, a JSON array string, or a comma-separated string. Returns `None` when the field is missing, null, or blank.
 - `_apply_skip_tax_code(sap_df, config)` -- post-processing step that reads `skip_tax_code_for_accounts` via `_get_custom_field` and blanks `Tax Code` for any row whose `Account Code` is in the list.
 - `_apply_skip_tax_code_if_zero(sap_df, config)` -- post-processing step that reads `skip_tax_code_if_tax_amount_zero` via `_get_custom_field` and blanks `Tax Code` for any row whose `Tax Amount DC WMWST` is zero.
 
