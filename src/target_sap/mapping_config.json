@@ -12,7 +12,7 @@
     "Posting Date BUDAT": {
       "source": "conditional_posting_date",
       "transaction_date_column": "Transaction Date",
-      "event_type_column": "Accounting Event Type",
+      "account_number_column": "Account Number",
       "format": "%d/%m/%Y"
     },
     "Document Date BLDAT": {

@@ -120,6 +120,74 @@ def _get_custom_field(config, field_name):
     return None
 
 
+def _normalize_account_token(value):
+    """Return an account number as a stripped string, or '' when it is blank.
+
+    Whole numbers inferred as floats (``400100.0``) match the same code written
+    without a decimal.
+    """
+    if value is None:
+        return ''
+    try:
+        if bool(pd.isna(value)):
+            return ''
+    except (TypeError, ValueError):
+        pass
+    text = str(value).strip()
+    if text.lower() in ('', 'nan', 'none', '<na>', 'nat'):
+        return ''
+    if text.endswith('.0'):
+        head = text[:-2]
+        if head.lstrip('-').isdigit():
+            return head
+    return text
+
+
+def _nonempty_account_tokens(items):
+    """Normalize account numbers and drop blanks."""
+    return [
+        account
+        for account in (_normalize_account_token(item) for item in items)
+        if account
+    ]
+
+
+def _parse_revenue_account_numbers(value):
+    """Return revenue account numbers, or None when the custom field is unset.
+
+    None means every posting date equals the transaction date. An empty list
+    means no account number is treated as revenue. Accepts a list, a JSON array
+    string, or a comma-separated string.
+    """
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return _nonempty_account_tokens(value)
+    text = str(value).strip()
+    if not text or text.lower() == 'null':
+        return None
+    if text.startswith('[') or text.startswith('{'):
+        try:
+            parsed = json.loads(text)
+        except (json.JSONDecodeError, TypeError) as e:
+            raise MappingConfigError(
+                f"Invalid JSON in custom field 'revenue_account_numbers': {e}"
+            )
+        if not isinstance(parsed, list):
+            raise MappingConfigError(
+                "Custom field 'revenue_account_numbers' must be a list of account numbers"
+            )
+        return _nonempty_account_tokens(parsed)
+    return _nonempty_account_tokens(text.split(','))
+
+
+def _configured_revenue_account_numbers(config):
+    """Revenue account list from custom_fields, or None when it is not set."""
+    return _parse_revenue_account_numbers(
+        _get_custom_field(config, 'revenue_account_numbers')
+    )
+
+
 def _apply_skip_tax_code(sap_df, config):
     """Clear Tax Code for rows whose Account Code is in the skip_tax_code_for_accounts custom field."""
     skip_value = _get_custom_field(config, 'skip_tax_code_for_accounts')
@@ -385,31 +453,47 @@ def _last_day_of_current_month(today):
 
 
 def _handle_conditional_posting_date(df, sap_field, mapping, config, entity_id):
-    """Set posting date from event type and transaction date.
+    """Set posting date from revenue account numbers and the transaction date.
 
-    Revenue lines, and non-revenue lines dated today or yesterday, use the
-    transaction date. Every other non-revenue line uses the last day of the
-    current month. Document date is mapped separately from Transaction Date.
+    When ``revenue_account_numbers`` is null or blank, or the row's account
+    number is in that list, posting date equals the transaction date. Every
+    other line whose transaction date is strictly before yesterday uses the
+    last day of the current month. Document date is mapped separately from
+    Transaction Date.
     """
     fmt = mapping.get('format', '%d/%m/%Y')
     txn_col = mapping['transaction_date_column']
-    event_col = mapping['event_type_column']
-    missing = [col for col in (txn_col, event_col) if col not in df.columns]
+    revenue_accounts = _configured_revenue_account_numbers(config)
+    required = [txn_col]
+    if revenue_accounts is not None:
+        account_col = mapping.get('account_number_column')
+        if not account_col:
+            raise MappingConfigError(
+                f"'{sap_field}' requires 'account_number_column' when "
+                "revenue_account_numbers is set"
+            )
+        required.append(account_col)
+    missing = [col for col in required if col not in df.columns]
     if missing:
         raise MappingConfigError(f"'{sap_field}' requires columns {missing}")
 
     txn = _parse_transaction_dates(df[txn_col], sap_field)
-    event_series = df[event_col]
+    if revenue_accounts is None:
+        return txn.dt.strftime(fmt)
+
+    accounts = df[account_col].map(_normalize_account_token)
+    in_list = accounts.isin(set(revenue_accounts))
     today = pd.Timestamp(datetime.now().date())
     yesterday = today - pd.Timedelta(days=1)
     month_end = _last_day_of_current_month(today)
-
-    is_revenue = (
-        event_series.fillna('').astype(str).str.strip().str.lower() == 'revenue'
-    )
     txn_day = txn.dt.normalize()
-    is_recent = txn_day.eq(today) | txn_day.eq(yesterday)
-    posting = txn.where(is_revenue | is_recent, month_end)
+    is_before_yesterday = txn_day < yesterday
+    posting = txn.where(in_list | ~is_before_yesterday, month_end)
+    month_end_rows = int((~in_list & is_before_yesterday).sum())
+    logger.info(
+        f"Posting date uses revenue accounts {revenue_accounts}; "
+        f"{month_end_rows} row(s) use month end"
+    )
     return posting.dt.strftime(fmt)
 
 
@@ -463,9 +547,17 @@ def transform_to_sap_xlsx(csv_path, field_mappings, config, entity_id=None):
         if m.get('source') == 'conditional' and 'condition_column' in m:
             required_columns.add(m['condition_column'])
         if m.get('source') == 'conditional_posting_date':
-            for key in ('transaction_date_column', 'event_type_column'):
-                if key in m:
-                    posting_columns.add(m[key])
+            txn_col = m.get('transaction_date_column')
+            if txn_col:
+                posting_columns.add(txn_col)
+            if _configured_revenue_account_numbers(config) is not None:
+                account_col = m.get('account_number_column')
+                if not account_col:
+                    raise MappingConfigError(
+                        "conditional_posting_date requires account_number_column "
+                        "when revenue_account_numbers is set"
+                    )
+                posting_columns.add(account_col)
 
     missing_posting = posting_columns - set(df.columns)
     if missing_posting:
